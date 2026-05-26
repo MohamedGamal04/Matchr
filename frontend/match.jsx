@@ -3,12 +3,12 @@
 const API_BASE = 'http://localhost:8000';
 const MODEL_NAME = 'BAAI/bge-large-en-v1.5';
 
+// Glassdoor / ZipRecruiter / Google Jobs were removed — JobSpy's scrapers
+// for them return 0 rows from most IPs. Indeed is the only reliably
+// working live source. 'other' covers CSV seed rows + Add Data submissions.
 const SCRAPE_SITES = [
-  { id: 'indeed',        label: 'Indeed',        scrapeable: true  },
-  { id: 'glassdoor',     label: 'Glassdoor',     scrapeable: true  },
-  { id: 'zip_recruiter', label: 'ZipRecruiter',  scrapeable: true  },
-  { id: 'google',        label: 'Google Jobs',   scrapeable: true  },
-  { id: 'other',         label: 'Sample / User', scrapeable: false },
+  { id: 'indeed', label: 'Indeed',        scrapeable: true  },
+  { id: 'other',  label: 'Sample / User', scrapeable: false },
 ];
 const SITE_LABEL = Object.fromEntries(SCRAPE_SITES.map(s => [s.id, s.label]));
 const SCRAPEABLE_IDS = SCRAPE_SITES.filter(s => s.scrapeable).map(s => s.id);
