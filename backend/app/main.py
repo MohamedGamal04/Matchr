@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routes import eval, health, match
+from app.routes import data, eval, health, match
 from app.services.embedder import preload_models
 
 logging.basicConfig(
@@ -89,6 +89,7 @@ async def log_requests(request: Request, call_next):
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(match.router,  prefix="/api/match", tags=["Match"])
 app.include_router(eval.router,   prefix="/api/eval",  tags=["Evaluation"])
+app.include_router(data.router,   prefix="/api/ingest", tags=["Ingest"])
 
 
 @app.get("/", tags=["Root"])

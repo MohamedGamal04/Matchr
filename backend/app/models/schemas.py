@@ -79,3 +79,26 @@ class EvalSummary(BaseModel):
     avg_mrr: float
     avg_p5: float
     avg_latency_ms: int
+
+
+# ── Ingest schemas ────────────────────────────────────────────────────────────
+
+class IngestResumeRequest(BaseModel):
+    category: str = Field(..., min_length=2, max_length=80)
+    full_text: str = Field(..., min_length=50, max_length=20000)
+
+
+class IngestJobRequest(BaseModel):
+    title: str = Field(..., min_length=2, max_length=120)
+    company: Optional[str] = Field(None, max_length=120)
+    salary: Optional[str] = Field(None, max_length=80)
+    experience: Optional[str] = Field(None, max_length=80)
+    work_type: Optional[str] = Field(None, max_length=40)
+    skills: list[str] = Field(default_factory=list)
+    full_text: str = Field(..., min_length=50, max_length=20000)
+
+
+class IngestResponse(BaseModel):
+    id: str
+    source_id: str
+    message: str

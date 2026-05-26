@@ -20,6 +20,7 @@ function App() {
     const h = (window.location.hash || '#/').replace(/^#/, '');
     if (h.startsWith('/match')) return 'match';
     if (h.startsWith('/eval')) return 'eval';
+    if (h.startsWith('/add')) return 'add';
     return 'landing';
   };
   const [route, setRoute] = React.useState(parseRoute);
@@ -62,6 +63,7 @@ function App() {
       {route === 'landing' && <Landing onRoute={goto} />}
       {route === 'match' && <MatchPage />}
       {route === 'eval' && <EvalPage />}
+      {route === 'add' && <AddDataPage />}
 
       <TweaksPanel title="Tweaks">
         <TweakSection label="Brand">
