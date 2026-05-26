@@ -20,23 +20,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ── Sentry (no-op when SENTRY_DSN is unset) ──────────────────────────────────
-
-if settings.sentry_dsn:
-    import sentry_sdk
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
-    from sentry_sdk.integrations.starlette import StarletteIntegration
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.environment,
-        traces_sample_rate=0.0,           # sampling can be raised post-launch
-        send_default_pii=False,
-        integrations=[StarletteIntegration(), FastApiIntegration()],
-    )
-    logger.info("Sentry enabled (environment=%s).", settings.environment)
-
-
 # ── Lifespan: warm-up models at startup ──────────────────────────────────────
 
 @asynccontextmanager

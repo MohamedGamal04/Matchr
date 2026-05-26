@@ -14,7 +14,6 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "num2words>=0.5.14",
     "slowapi>=0.1.9",
-    "sentry-sdk[fastapi]>=2.60.0",
 ]
 
 [dependency-groups]

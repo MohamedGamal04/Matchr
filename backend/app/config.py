@@ -16,8 +16,6 @@ class Settings(BaseSettings):
 
     # Optional
     hf_token: str | None = None
-    sentry_dsn: str | None = None
-    environment: str = "development"    # used as Sentry environment tag
 
     # Rate-limit defaults (slowapi syntax). Override per env if needed.
     rate_limit_match:  str = "20/minute"
