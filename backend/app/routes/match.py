@@ -89,30 +89,26 @@ def match_resume_to_jobs(req: MatchRequest):
         # 3. Optionally rerank with cross-encoder, then trim to top_k.
         #    Either way we always fetch full_text for the kept candidates so
         #    the result loop can extract clean skill keywords for display.
-        if req.rerank and candidates:
-            ids = [c["id"] for c in candidates]
+        def _attach_full_text_and_source(cands):
+            ids = [c["id"] for c in cands]
             ft_res = (
                 supabase.table("jobs")
-                .select("id, full_text")
+                .select("id, full_text, source")
                 .in_("id", ids)
                 .execute()
             )
-            ft_map = {str(r["id"]): r["full_text"] for r in (ft_res.data or [])}
-            for c in candidates:
+            ft_map  = {str(r["id"]): r["full_text"] for r in (ft_res.data or [])}
+            src_map = {str(r["id"]): r["source"]    for r in (ft_res.data or [])}
+            for c in cands:
                 c["full_text"] = ft_map.get(str(c["id"]), "")
+                c["source"]    = src_map.get(str(c["id"]), "")
+
+        if req.rerank and candidates:
+            _attach_full_text_and_source(candidates)
             candidates = rerank(req.text, candidates, text_key="full_text", top_k=req.top_k)
         else:
             candidates = candidates[: req.top_k]
-            ids = [c["id"] for c in candidates]
-            ft_res = (
-                supabase.table("jobs")
-                .select("id, full_text")
-                .in_("id", ids)
-                .execute()
-            )
-            ft_map = {str(r["id"]): r["full_text"] for r in (ft_res.data or [])}
-            for c in candidates:
-                c["full_text"] = ft_map.get(str(c["id"]), "")
+            _attach_full_text_and_source(candidates)
 
         # 4. Build skill overlap per result.
         #    Prefer skills extracted from the description text (clean,
@@ -140,6 +136,7 @@ def match_resume_to_jobs(req: MatchRequest):
                     skills=list(job_skills),
                     matched_skills=matched,
                     missing_skills=missing,
+                    source=c.get("source") or "",
                 )
             )
 
@@ -202,21 +199,26 @@ def match_job_to_resumes(req: MatchRequest):
                 "eval_id": None,
             }
 
-        # Cross-encoder reranking requires full_text
-        if req.rerank and candidates:
-            ids = [c["id"] for c in candidates]
+        def _attach_full_text_and_source(cands):
+            ids = [c["id"] for c in cands]
             ft_res = (
                 supabase.table("resumes")
-                .select("id, full_text")
+                .select("id, full_text, source")
                 .in_("id", ids)
                 .execute()
             )
-            ft_map = {str(r["id"]): r["full_text"] for r in (ft_res.data or [])}
-            for c in candidates:
+            ft_map  = {str(r["id"]): r["full_text"] for r in (ft_res.data or [])}
+            src_map = {str(r["id"]): r["source"]    for r in (ft_res.data or [])}
+            for c in cands:
                 c["full_text"] = ft_map.get(str(c["id"]), "")
+                c["source"]    = src_map.get(str(c["id"]), "")
+
+        if req.rerank and candidates:
+            _attach_full_text_and_source(candidates)
             candidates = rerank(req.text, candidates, text_key="full_text", top_k=req.top_k)
         else:
             candidates = candidates[: req.top_k]
+            _attach_full_text_and_source(candidates)
 
         job_skills = set(extract_skills(req.text))
 
@@ -235,6 +237,7 @@ def match_job_to_resumes(req: MatchRequest):
                     preview=c.get("preview") or "",
                     matched_skills=matched,
                     missing_skills=missing,
+                    source=c.get("source") or "",
                 )
             )
 

@@ -44,6 +44,20 @@ async function apiFeedback(evalId, resultId, action) {
 
 // ── Result normalisers ────────────────────────────────────────────────────────
 
+function sourceBadge(source) {
+  // Map raw DB `source` to a short, friendly display label.
+  if (!source) return null;
+  const s = String(source);
+  if (s.startsWith('jobspy:')) {
+    const site = s.slice('jobspy:'.length);
+    return site.charAt(0).toUpperCase() + site.slice(1).replace('_', ' ');
+  }
+  if (s === 'user_submission')          return 'User';
+  if (s === 'JOB_data_sample.csv')      return 'Sample';
+  if (s.startsWith('sid1877'))          return 'Sample';
+  return s.length > 14 ? s.slice(0, 14) + '…' : s;
+}
+
 function normalizeJob(r) {
   return {
     id:         r.job_id,
@@ -57,6 +71,7 @@ function normalizeJob(r) {
     edu:        '—',
     matched:    r.matched_skills || [],
     missing:    r.missing_skills || [],
+    source:     sourceBadge(r.source),
   };
 }
 
@@ -74,6 +89,7 @@ function normalizeResume(r) {
     matched:    r.matched_skills || [],
     missing:    r.missing_skills || [],
     preview:    r.preview,
+    source:     sourceBadge(r.source),
   };
 }
 
@@ -171,7 +187,19 @@ function ResultCard({ item, mode, feedback, onFeedback }) {
     <div className="result-card">
       <div className="result-top">
         <div style={{minWidth: 0}}>
-          <h3 className="result-title">{item.title}</h3>
+          <div style={{display:'flex', alignItems:'center', gap: 8, flexWrap:'wrap'}}>
+            <h3 className="result-title" style={{margin: 0}}>{item.title}</h3>
+            {item.source && (
+              <span style={{
+                fontSize: 10, fontWeight: 500, textTransform:'uppercase',
+                letterSpacing: 0.3, padding:'2px 6px', borderRadius: 4,
+                background:'var(--bg-soft)', color:'var(--ink-500)',
+                border:'0.5px solid var(--border)'
+              }}>
+                {item.source}
+              </span>
+            )}
+          </div>
           {isResume ? (
             <div className="result-meta">
               <span>Resume · {item.title} specialist</span>

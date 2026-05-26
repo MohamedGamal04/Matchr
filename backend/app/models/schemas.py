@@ -23,6 +23,7 @@ class JobResult(BaseModel):
     skills: list[str]
     matched_skills: list[str] = []
     missing_skills: list[str] = []
+    source: str = ""
 
 
 class ResumeResult(BaseModel):
@@ -33,6 +34,7 @@ class ResumeResult(BaseModel):
     preview: str
     matched_skills: list[str] = []
     missing_skills: list[str] = []
+    source: str = ""
 
 
 class MatchResponse(BaseModel):
