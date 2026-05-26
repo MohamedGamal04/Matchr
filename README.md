@@ -1,68 +1,203 @@
-# Resume Screening Using NLP
+# Matchr — Semantic Resume Screening
 
-Semantic search app to match resumes and job descriptions using Sentence-Transformers and cosine similarity. Includes a Streamlit UI and a notebook for data prep, profiling, and embedding generation.
-Demo link : https://resume-screening-using-nlp-jepby5phpgkbpmokkzs3tc.streamlit.app/
+Match resumes to jobs (and vice-versa) with a transformer bi-encoder over
+pgvector, a cross-encoder reranker, and live job ingest from Indeed via
+[JobSpy](https://github.com/Bunsly/JobSpy). FastAPI on the backend, a
+vanilla React + Babel single-page app on the frontend, Supabase for storage.
 
-## Features
-- Semantic matching: resumes ↔ jobs via transformer embeddings
-- Top-K results with similarity scores
-- Skills overlap extraction (simple NLP heuristic)
-- Preprocessing pipeline (NLTK, contractions, lemmatization)
-- Persisted embeddings/data as pickles under `model/`
-- Streamlit UI with model selection and token-gated access
+> **Status.** Local dev works end-to-end. Production deploy targets: backend on
+> Hugging Face Spaces (Docker), frontend on Vercel (static). See the
+> [deployment notes](#deployment) below.
 
-## Project Structure
-- `app.py`: Streamlit UI for searching and one-to-one matching
-- `ResumeScreeningUsingNLP.ipynb`: Notebook for data loading, preprocessing, profiling, and embedding generation
-- `requirements.txt`: Python dependencies
-- `model/`: Saved artifacts (`job_embeddings.pkl`, `resume_embeddings.pkl`, `job_data.pkl`, `resume_data.pkl`)
-- `reports/`: Data profiling HTML outputs
+## Architecture
 
-## Prerequisites
-- Python 3.10+ recommended (Windows + conda works well)
-- Hugging Face account and API token (required by the app)
-
-## Setup (Conda, Windows PowerShell)
-```powershell
-# Create and activate environment (adjust Python version if needed)
-conda create -n torch python=3.10 -y
-conda activate torch
-
-# Install project dependencies
-pip install -r requirements.txt
-
-# Download NLTK data used in preprocessing
-python -c "import nltk; [nltk.download(p) for p in ['punkt','averaged_perceptron_tagger','wordnet','omw-1.4','stopwords']]"
+```
+                           ┌────────────────────────────────────────────┐
+                           │ Frontend (Vanilla React + Babel, no build) │
+                           │  match · add-data · landing                │
+                           └──────────────┬─────────────────────────────┘
+                                          │ fetch()
+                                          ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ FastAPI backend (app/)                                               │
+│                                                                      │
+│  /api/health       → liveness + model load status                    │
+│  /api/match/...    → resume↔job similarity (bi-encoder + reranker)   │
+│  /api/eval/...     → feedback signals (no IR metrics aggregated)     │
+│  /api/ingest/...   → user-submitted resume / job                     │
+│  /api/scrape/...   → live Indeed scrape via JobSpy                   │
+└──────────────────────────────────────────────────────────────────────┘
+                        │                       │
+                        ▼                       ▼
+            ┌────────────────────┐   ┌────────────────────────┐
+            │ BAAI/bge-large-en  │   │ Supabase (pgvector)    │
+            │  + cross-encoder   │   │  resumes / jobs /      │
+            │  ms-marco-MiniLM   │   │  evaluations           │
+            └────────────────────┘   └────────────────────────┘
 ```
 
-## Hugging Face Token
-- Create a token: https://huggingface.co/settings/tokens (read access is enough)
-- The app will ask for the token in the sidebar before loading models
+Embeddings are 1024-dim BGE vectors. Retrieval uses HNSW ANN search on
+`vector_cosine_ops`. Top-50 candidates are then reranked with a small
+cross-encoder before being cut to `top_k`.
 
-Optionally, you can login once via CLI (not required by the app):
-```powershell
-pip install huggingface_hub
-huggingface-cli login
+## Repository layout
+
+```
+backend/        FastAPI app, uv-managed Python env, Dockerfile
+  app/
+    main.py            FastAPI + lifespan + request-logging middleware
+    config.py          pydantic-settings (.env)
+    models/schemas.py  request/response Pydantic models
+    routes/
+      health.py        /api/health
+      match.py         /api/match/{resume-jobs,job-resumes,one-to-one}
+      eval.py          /api/eval/{feedback,recent}
+      data.py          /api/ingest/{resume,job}
+      scrape.py        /api/scrape/jobs-for-query
+    services/
+      embedder.py      bi-encoder + cross-encoder (lru_cache)
+      preprocessor.py  text cleaning, PII strip, skill extraction
+      scraper.py       JobSpy → embed → upsert helper
+      supabase_client.py
+frontend/       Single-page React app, no build step (Babel in-browser)
+  index.html         entry point
+  app.jsx            hash routing + Tweaks panel
+  landing.jsx        marketing page + Nav
+  match.jsx          the actual product surface
+  add-data.jsx       user-submitted resume / job ingest
+  primitives.jsx     icons, Logo, ScoreBar, Pill, Feedback
+  data.jsx           sample resume + sample JD
+  styles.css
+scripts/        One-shot CLIs (importable from backend.app.services.scraper)
+  migrate_resumes.py   load HF dataset, embed, upsert (sample 20/category)
+  migrate_jobs.py      load samples/JOB_data_sample.csv, embed, upsert
+  scrape_jobs.py       JobSpy CLI (--search, --location, --country, --sites)
+samples/        Seed CSVs (gitignored by extension)
+supabase/       schema.sql — vector(1024) columns, HNSW indexes, RPC funcs
+prototype/      Original Streamlit + pickle version (archived)
 ```
 
-## Generate Embeddings (Notebook)
-If you don’t already have pickles in `model/`, open the notebook and run the embedding cells:
-- File: `ResumeScreeningUsingNLP.ipynb`
-- It saves: `model/job_embeddings.pkl`, `model/resume_embeddings.pkl`, `model/job_data.pkl`, `model/resume_data.pkl`
+## Tech choices, briefly
 
-## Run the App
-```powershell
-streamlit run app.py
+- **Bi-encoder: `BAAI/bge-large-en-v1.5`** (1024-dim). Best open accuracy at
+  this size. BGE needs a task-specific prefix on queries only — handled in
+  `encode_query`.
+- **Cross-encoder: `cross-encoder/ms-marco-MiniLM-L-6-v2`**. Reranks 50 → top_k.
+- **pgvector + HNSW** (m=16, ef_construction=64). Sub-100 ms ANN at this scale.
+- **uv** for the Python env. `pyproject.toml` + lockfile in `backend/`.
+- **No frontend build step.** Babel transpiles JSX in the browser. Fine for a
+  portfolio demo; if this ever needs to be production-fast, swap to esbuild.
+
+## Quick start (local)
+
+You'll need: Python ≥ 3.11, `uv`, a Supabase project, a free Hugging Face
+token (for downloading model weights, not for inference at runtime).
+
+```bash
+# 1. Clone + set up backend env
+git clone <this-repo>
+cd Resume-Screening/backend
+uv sync                        # creates .venv with all deps
+cp .env.example .env           # then fill SUPABASE_URL / SUPABASE_KEY / HF_TOKEN
+
+# 2. Apply the DB schema once
+#    Open supabase/schema.sql in the Supabase SQL Editor and run it.
+
+# 3. Seed the database (~2 min on CPU)
+cd ..
+backend/.venv/bin/python scripts/migrate_resumes.py
+backend/.venv/bin/python scripts/migrate_jobs.py
+
+# 4. Start the API
+cd backend
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 5. Serve the frontend (any static server works)
+cd ../frontend
+python -m http.server 5500
+# Open http://localhost:5500
 ```
-- Enter your Hugging Face token in the sidebar
-- Choose a model and Top-K value
-- Use one of the three modes: 
-  - Search jobs by resume
-  - Search resumes by job
-  - Match job with resume (one-to-one)
 
-## Notes
-- Default models include: `all-mpnet-base-v2`, `paraphrase-MiniLM-L6-v2`, `paraphrase-mpnet-base-v2`, `all-MiniLM-L6-v2`
-- App requires token entry even for public models to keep behavior consistent
-- Datasets used : [Resume](https://www.kaggle.com/datasets/snehaanbhawal/resume-dataset) | [Jobs](https://www.kaggle.com/datasets/ravindrasinghrana/job-description-dataset)
+`API_BASE` in [frontend/match.jsx](frontend/match.jsx) defaults to
+`http://localhost:8000` — change once before deploying.
 
+## Endpoints (key ones)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/api/match/resume-jobs` | Resume → ranked jobs. Supports `sources` filter (pill IDs) and `rerank` toggle. |
+| `POST` | `/api/match/job-resumes` | Job → ranked resumes. |
+| `POST` | `/api/match/one-to-one` | Single-pair similarity + skill overlap. |
+| `POST` | `/api/eval/feedback` | Records `{result_id: up/down/clicked}` into the row's `user_feedback` JSONB. No IR metrics computed. |
+| `POST` | `/api/ingest/resume` | Add a resume — embeds, sanitises preview, inserts. |
+| `POST` | `/api/ingest/job` | Add a job posting — embeds, inserts. |
+| `POST` | `/api/scrape/jobs-for-query` | Live Indeed scrape via JobSpy. Inputs: `text` (auto-extracts a job title from it), optional `search_term`, `country`, `location`. |
+
+OpenAPI / Swagger UI at `http://localhost:8000/docs`.
+
+## Frontend features
+
+- **Match page** — three tabs (Resume→Jobs, Job→Resumes, One-to-one), top-K
+  selector, sort controls, clickable job/company links when the row is from
+  JobSpy.
+- **Source pills** — control both the result-list filter and the scrape
+  destinations. Two pills: `Indeed` (live, scrape + filter) and
+  `Sample / User` (filter-only, covers the CSV seed + user submissions).
+- **Refresh from Indeed** — pastes the resume → derives a job title →
+  scrapes ~25 fresh Indeed rows → embeds → upserts → re-runs the match.
+  Country dropdown (USA/UK/Egypt/…) + optional search override.
+- **Add data page** (`#/add`) — submit a single resume or job posting
+  with category/title metadata.
+- **Feedback** — thumbs up/down on each result card; signal lands in the
+  `evaluations.user_feedback` JSONB column.
+
+## Database schema
+
+`supabase/schema.sql` is the source of truth. Three tables:
+
+- `resumes(id, source, source_id, category, preview, full_text, embedding vector(1024), created_at)`
+- `jobs(id, source, source_id, title, company, salary, experience, work_type, skills text[], full_text, job_url, company_url, embedding vector(1024), created_at)`
+- `evaluations(id, query_text, query_type, model_name, reranked, result_ids uuid[], similarity_scores float[], rerank_scores float[], user_feedback jsonb, latency_ms, created_at)`
+
+Two RPC functions: `match_resumes(query_embedding, match_count, filter_category)` and `match_jobs(query_embedding, match_count)`.
+
+`full_text` is never returned through the API — only `preview` (sanitised).
+
+## Scraping notes
+
+JobSpy supports Indeed, Glassdoor, ZipRecruiter, Google Jobs, LinkedIn, and more.
+In practice only **Indeed** is reliable from most IPs — the others get
+rate-limited / 0-result silently. The UI only exposes Indeed; the CLI
+([scripts/scrape_jobs.py](scripts/scrape_jobs.py)) accepts `--sites glassdoor,zip_recruiter,google` if you want to experiment.
+
+LinkedIn is intentionally not wired up — it violates ToS and JobSpy's
+scraper for it works only with paid residential proxies.
+
+## Deployment
+
+**Backend → Hugging Face Spaces (Docker).** The `backend/Dockerfile` already
+bakes both models at build time so cold start is ~30 s instead of minutes.
+Set repository secrets in the Space:
+
+- `SUPABASE_URL`, `SUPABASE_KEY`, `HF_TOKEN`
+- `CORS_ORIGINS` — the deployed frontend URL (no trailing slash)
+
+**Frontend → Vercel (static).** No build step needed — Vercel serves
+`frontend/` as static files. Point `API_BASE` at the HF Space URL before deploy.
+
+The free HF Spaces tier hibernates after ~48 h idle; the first request after
+sleep waits while the model reloads. Either accept the cold start, upgrade
+to "Always-on", or hit `/api/health` periodically from an external cron.
+
+## What's intentionally **not** in this repo
+
+- An IR-metrics dashboard (NDCG/MRR/P@5). The columns and view were dropped
+  in commit `c2ffddd` — we collect raw feedback signals but no aggregate
+  scoring. The Evaluation page was deleted with them.
+- Multi-model selection. Started with four bi-encoders; converged on BGE.
+- Sign-in / auth. The Add Data and Scrape endpoints are open — gate them
+  with an `X-API-Key` if you deploy publicly.
+
+## License
+
+MIT.
