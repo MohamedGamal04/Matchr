@@ -24,6 +24,8 @@ class JobResult(BaseModel):
     matched_skills: list[str] = []
     missing_skills: list[str] = []
     source: str = ""
+    job_url: Optional[str] = None
+    company_url: Optional[str] = None
 
 
 class ResumeResult(BaseModel):
@@ -92,3 +94,24 @@ class IngestResponse(BaseModel):
     id: str
     source_id: str
     message: str
+
+
+# ── Scrape schemas ────────────────────────────────────────────────────────────
+
+class ScrapeRequest(BaseModel):
+    text: str = Field(..., min_length=10,
+                      description="Resume or job-description text; the search term is derived from it.")
+    search_term: Optional[str] = Field(None, max_length=120,
+                                       description="Override the auto-extracted query.")
+    location: str = Field("remote", max_length=80)
+    results_wanted: int = Field(25, ge=1, le=100)
+    sites: list[str] = Field(default_factory=lambda: ["indeed"])
+
+
+class ScrapeResponse(BaseModel):
+    search_term: str
+    scraped: int
+    deduped: Optional[int] = None
+    inserted: int
+    errors: int
+    error_message: Optional[str] = None

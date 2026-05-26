@@ -30,6 +30,8 @@ create table if not exists jobs (
   work_type    text,          -- "Remote" | "Hybrid" | "On-site"
   skills       text[],        -- array of skill keyword strings
   full_text    text,          -- full JD text used for embedding + reranking
+  job_url      text,          -- direct link to the original posting (JobSpy)
+  company_url  text,          -- company website / profile URL (JobSpy)
   embedding    vector(1024),
   created_at   timestamptz default now()
 );

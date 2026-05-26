@@ -1,0 +1,43 @@
+"""
+POST /api/scrape/jobs-for-query
+
+Live JobSpy scrape triggered from the match page's "Refresh from Indeed"
+button. Synchronous (takes 15-60s). Inserts fresh jobs into Supabase
+so the subsequent match request can rank them alongside seed data.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, HTTPException
+
+from app.models.schemas import ScrapeRequest, ScrapeResponse
+from app.services.scraper import extract_query_from_text, scrape_and_upsert
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+@router.post("/jobs-for-query", response_model=ScrapeResponse)
+def scrape_jobs_for_query(req: ScrapeRequest) -> ScrapeResponse:
+    search_term = (req.search_term or "").strip() or extract_query_from_text(req.text)
+    if not search_term:
+        raise HTTPException(status_code=422, detail="Could not derive a search term from the input text.")
+
+    try:
+        result = scrape_and_upsert(
+            search_term=search_term,
+            location=req.location,
+            results_wanted=req.results_wanted,
+            sites=req.sites or ["indeed"],
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        logger.exception("scrape_jobs_for_query unexpected failure")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return ScrapeResponse(**result)

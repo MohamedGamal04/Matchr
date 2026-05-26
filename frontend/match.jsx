@@ -42,6 +42,17 @@ async function apiFeedback(evalId, resultId, action) {
   } catch (_) {}
 }
 
+async function apiScrapeJobs(text) {
+  const res = await fetch(`${API_BASE}/api/scrape/jobs-for-query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, location: 'remote', results_wanted: 25, sites: ['indeed'] }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(formatDetail(json.detail, res.status));
+  return json;
+}
+
 // ── Result normalisers ────────────────────────────────────────────────────────
 
 function sourceBadge(source) {
@@ -72,6 +83,8 @@ function normalizeJob(r) {
     matched:    r.matched_skills || [],
     missing:    r.missing_skills || [],
     source:     sourceBadge(r.source),
+    jobUrl:     r.job_url || null,
+    companyUrl: r.company_url || null,
   };
 }
 
@@ -188,7 +201,16 @@ function ResultCard({ item, mode, feedback, onFeedback }) {
       <div className="result-top">
         <div style={{minWidth: 0}}>
           <div style={{display:'flex', alignItems:'center', gap: 8, flexWrap:'wrap'}}>
-            <h3 className="result-title" style={{margin: 0}}>{item.title}</h3>
+            <h3 className="result-title" style={{margin: 0}}>
+              {item.jobUrl ? (
+                <a href={item.jobUrl} target="_blank" rel="noreferrer noopener"
+                   style={{color:'inherit', textDecoration:'none'}}
+                   onMouseEnter={(e)=>e.currentTarget.style.textDecoration='underline'}
+                   onMouseLeave={(e)=>e.currentTarget.style.textDecoration='none'}>
+                  {item.title} <Icon.Arrow size={11}/>
+                </a>
+              ) : item.title}
+            </h3>
             {item.source && (
               <span style={{
                 fontSize: 10, fontWeight: 500, textTransform:'uppercase',
@@ -206,7 +228,12 @@ function ResultCard({ item, mode, feedback, onFeedback }) {
             </div>
           ) : (
             <div className="result-meta">
-              <span>{item.company}</span>
+              {item.companyUrl ? (
+                <a href={item.companyUrl} target="_blank" rel="noreferrer noopener"
+                   style={{color:'inherit'}}>{item.company}</a>
+              ) : (
+                <span>{item.company}</span>
+              )}
               <span className="result-meta-dot"/>
               <span>{item.location}</span>
             </div>
@@ -300,7 +327,7 @@ function sortResults(items, sort) {
   }
 }
 
-function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId }) {
+function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId, onRefreshFromIndeed, refreshing, refreshMsg }) {
   const [sort, setSort] = React.useState('score');
   const isResume = mode === 'j2r';
   const sorted = results ? sortResults(results, sort) : null;
@@ -328,6 +355,17 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
                 {!isResume && <option value="experience">Sort: Experience</option>}
                 {!isResume && <option value="work_type">Sort: Work type</option>}
               </select>
+              {!isResume && onRefreshFromIndeed && (
+                <button
+                  className="btn btn-naked"
+                  style={{height: 26, fontSize: 12}}
+                  onClick={onRefreshFromIndeed}
+                  disabled={refreshing}
+                  title="Scrape Indeed for fresh jobs matching this resume (~30s)"
+                >
+                  {refreshing ? 'Scraping Indeed…' : 'Refresh from Indeed'}
+                </button>
+              )}
               <button className="btn btn-naked" style={{height: 26, fontSize: 12}} onClick={onRerun}>
                 Re-run
               </button>
@@ -335,6 +373,15 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
           )}
         </div>
       </div>
+      {refreshMsg && (
+        <div style={{
+          margin:'0 16px', padding:'8px 12px', borderRadius: 6, fontSize: 12,
+          background: refreshMsg.ok ? '#ECFDF5' : '#FEF2F2',
+          color:      refreshMsg.ok ? '#047857' : '#EF4444',
+        }}>
+          {refreshMsg.ok ? '✓ ' : '⚠ '}{refreshMsg.msg}
+        </div>
+      )}
       <div className="results-list">
         {loading && [0,1,2,3,4].map(i => <SkeletonCard key={i}/>)}
         {!loading && !results && <EmptyState mode={mode} error={error} />}
@@ -531,6 +578,8 @@ function MatchPage() {
   const [elapsed, setElapsed] = React.useState(null);
   const [evalId, setEvalId] = React.useState(null);
   const [feedback, setFeedback] = React.useState({});
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshMsg, setRefreshMsg] = React.useState(null);
 
   // Reset when switching tabs
   React.useEffect(() => {
@@ -539,6 +588,7 @@ function MatchPage() {
     setElapsed(null);
     setEvalId(null);
     setFeedback({});
+    setRefreshMsg(null);
     if (mode === 'r2j') setText(SAMPLE_RESUME);
     if (mode === 'j2r') setText(SAMPLE_JD);
   }, [mode]);
@@ -573,6 +623,26 @@ function MatchPage() {
     }
   };
 
+  const refreshFromIndeed = async () => {
+    const queryText = file?.content || text;
+    if (!queryText?.trim() || refreshing) return;
+    setRefreshing(true);
+    setRefreshMsg(null);
+    try {
+      const data = await apiScrapeJobs(queryText);
+      const inserted = data.inserted ?? 0;
+      setRefreshMsg({
+        ok: true,
+        msg: `Added ${inserted} job${inserted === 1 ? '' : 's'} from Indeed (search: "${data.search_term}"). Refreshing results…`,
+      });
+      await submit();
+    } catch (e) {
+      setRefreshMsg({ ok: false, msg: `Scrape failed: ${e.message}` });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="match-shell" data-screen-label="02 Match">
       <div className="match-head">
@@ -601,6 +671,9 @@ function MatchPage() {
             onRerun={submit}
             feedback={feedback} setFeedback={setFeedback}
             evalId={evalId}
+            onRefreshFromIndeed={refreshFromIndeed}
+            refreshing={refreshing}
+            refreshMsg={refreshMsg}
           />
         </div>
       ) : (

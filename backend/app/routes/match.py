@@ -89,26 +89,28 @@ def match_resume_to_jobs(req: MatchRequest):
         # 3. Optionally rerank with cross-encoder, then trim to top_k.
         #    Either way we always fetch full_text for the kept candidates so
         #    the result loop can extract clean skill keywords for display.
-        def _attach_full_text_and_source(cands):
+        def _attach_extras_jobs(cands):
             ids = [c["id"] for c in cands]
             ft_res = (
                 supabase.table("jobs")
-                .select("id, full_text, source")
+                .select("id, full_text, source, job_url, company_url")
                 .in_("id", ids)
                 .execute()
             )
-            ft_map  = {str(r["id"]): r["full_text"] for r in (ft_res.data or [])}
-            src_map = {str(r["id"]): r["source"]    for r in (ft_res.data or [])}
+            row_map = {str(r["id"]): r for r in (ft_res.data or [])}
             for c in cands:
-                c["full_text"] = ft_map.get(str(c["id"]), "")
-                c["source"]    = src_map.get(str(c["id"]), "")
+                r = row_map.get(str(c["id"]), {})
+                c["full_text"]   = r.get("full_text") or ""
+                c["source"]      = r.get("source") or ""
+                c["job_url"]     = r.get("job_url")
+                c["company_url"] = r.get("company_url")
 
         if req.rerank and candidates:
-            _attach_full_text_and_source(candidates)
+            _attach_extras_jobs(candidates)
             candidates = rerank(req.text, candidates, text_key="full_text", top_k=req.top_k)
         else:
             candidates = candidates[: req.top_k]
-            _attach_full_text_and_source(candidates)
+            _attach_extras_jobs(candidates)
 
         # 4. Build skill overlap per result.
         #    Prefer skills extracted from the description text (clean,
@@ -137,6 +139,8 @@ def match_resume_to_jobs(req: MatchRequest):
                     matched_skills=matched,
                     missing_skills=missing,
                     source=c.get("source") or "",
+                    job_url=c.get("job_url"),
+                    company_url=c.get("company_url"),
                 )
             )
 
