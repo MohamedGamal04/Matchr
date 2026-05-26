@@ -20,6 +20,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _passes_source_filter(source: str, selected: list[str] | None) -> bool:
+    """Match a row's `source` column against the user-selected pill list.
+
+    Pill 'indeed' matches source == 'jobspy:indeed'. Pill 'other' matches
+    anything NOT starting with 'jobspy:' (the CSV seed + user submissions).
+    None / empty selection = no filter applied.
+    """
+    if not selected:
+        return True
+    src = source or ""
+    for pill in selected:
+        if pill == "other":
+            if not src.startswith("jobspy:"):
+                return True
+        else:
+            if src == f"jobspy:{pill}":
+                return True
+    return False
+
+
 # ── Helper ───────────────────────────────────────────────────────────────────
 
 
@@ -69,11 +89,13 @@ def match_resume_to_jobs(req: MatchRequest):
         # 1. Encode query
         embedding = encode_query(req.model_name, req.text)
 
-        # 2. Nearest-neighbour search in Supabase (top 50 candidates)
+        # 2. Nearest-neighbour search in Supabase. Pull a larger pool when a
+        # source filter is set so the post-filter result count is still useful.
         supabase = get_supabase()
+        pool = 200 if req.sources else 50
         result = supabase.rpc(
             "match_jobs",
-            {"query_embedding": embedding, "match_count": 50},
+            {"query_embedding": embedding, "match_count": pool},
         ).execute()
         candidates: list[dict] = result.data or []
 
@@ -105,12 +127,19 @@ def match_resume_to_jobs(req: MatchRequest):
                 c["job_url"]     = r.get("job_url")
                 c["company_url"] = r.get("company_url")
 
+        # Attach source/full_text/URLs once; needed for both filter + rerank.
+        _attach_extras_jobs(candidates)
+
+        # Source filter (pill selection from the frontend)
+        candidates = [
+            c for c in candidates
+            if _passes_source_filter(c.get("source", ""), req.sources)
+        ]
+
         if req.rerank and candidates:
-            _attach_extras_jobs(candidates)
             candidates = rerank(req.text, candidates, text_key="full_text", top_k=req.top_k)
         else:
             candidates = candidates[: req.top_k]
-            _attach_extras_jobs(candidates)
 
         # 4. Build skill overlap per result.
         #    Prefer skills extracted from the description text (clean,

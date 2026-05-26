@@ -9,6 +9,15 @@ class MatchRequest(BaseModel):
     model_name: str = Field("BAAI/bge-large-en-v1.5", description="Bi-encoder model to use")
     top_k: int = Field(5, ge=1, le=50, description="Number of results to return")
     rerank: bool = Field(True, description="Whether to apply cross-encoder reranking")
+    sources: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Optional source filter — list of pill IDs. "
+            "'indeed'/'glassdoor'/'zip_recruiter'/'google' map to 'jobspy:<id>' rows; "
+            "'other' covers everything not scraped via JobSpy (CSV seed, user submissions). "
+            "None or empty = no filter."
+        ),
+    )
 
 
 class JobResult(BaseModel):

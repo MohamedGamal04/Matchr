@@ -4,12 +4,15 @@ const API_BASE = 'http://localhost:8000';
 const MODEL_NAME = 'BAAI/bge-large-en-v1.5';
 
 const SCRAPE_SITES = [
-  { id: 'indeed',        label: 'Indeed' },
-  { id: 'glassdoor',     label: 'Glassdoor' },
-  { id: 'zip_recruiter', label: 'ZipRecruiter' },
-  { id: 'google',        label: 'Google Jobs' },
+  { id: 'indeed',        label: 'Indeed',        scrapeable: true  },
+  { id: 'glassdoor',     label: 'Glassdoor',     scrapeable: true  },
+  { id: 'zip_recruiter', label: 'ZipRecruiter',  scrapeable: true  },
+  { id: 'google',        label: 'Google Jobs',   scrapeable: true  },
+  { id: 'other',         label: 'Sample / User', scrapeable: false },
 ];
 const SITE_LABEL = Object.fromEntries(SCRAPE_SITES.map(s => [s.id, s.label]));
+const SCRAPEABLE_IDS = SCRAPE_SITES.filter(s => s.scrapeable).map(s => s.id);
+const ALL_PILL_IDS  = SCRAPE_SITES.map(s => s.id);
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
@@ -50,9 +53,12 @@ async function apiFeedback(evalId, resultId, action) {
   } catch (_) {}
 }
 
-async function apiScrapeJobs(text, sites = ['indeed']) {
-  // Smaller per-site batch when several sources are selected, to keep total
-  // scrape time roughly bounded (~30-60s).
+async function apiScrapeJobs(text, allSelectedSites) {
+  // Only scrape the JobSpy-capable sources. The 'other' pill is filter-only.
+  const sites = allSelectedSites.filter(s => SCRAPEABLE_IDS.includes(s));
+  if (sites.length === 0) {
+    throw new Error('Pick at least one scrapeable source (Indeed / Glassdoor / ZipRecruiter / Google Jobs).');
+  }
   const per_site = sites.length <= 1 ? 25 : sites.length === 2 ? 20 : 15;
   const res = await fetch(`${API_BASE}/api/scrape/jobs-for-query`, {
     method: 'POST',
@@ -343,12 +349,13 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
   const isResume = mode === 'j2r';
   const sorted = results ? sortResults(results, sort) : null;
 
+  const refreshableSelected = (scrapeSites || []).filter(s => SCRAPEABLE_IDS.includes(s));
   const refreshLabel = (() => {
     if (refreshing) return 'Scraping…';
-    if (!scrapeSites || scrapeSites.length === 0) return 'Pick a source';
-    if (scrapeSites.length === 1) return `Refresh from ${SITE_LABEL[scrapeSites[0]] || scrapeSites[0]}`;
-    if (scrapeSites.length === SCRAPE_SITES.length) return `Refresh from all ${SCRAPE_SITES.length} sources`;
-    return `Refresh from ${scrapeSites.length} sources`;
+    if (refreshableSelected.length === 0) return 'Pick a scrape source';
+    if (refreshableSelected.length === 1) return `Refresh from ${SITE_LABEL[refreshableSelected[0]]}`;
+    if (refreshableSelected.length === SCRAPEABLE_IDS.length) return `Refresh from all ${SCRAPEABLE_IDS.length} sources`;
+    return `Refresh from ${refreshableSelected.length} sources`;
   })();
 
   return (
@@ -379,7 +386,7 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
                   className="btn btn-naked"
                   style={{height: 26, fontSize: 12}}
                   onClick={onRefreshFromSources}
-                  disabled={refreshing || !scrapeSites || scrapeSites.length === 0}
+                  disabled={refreshing || refreshableSelected.length === 0}
                   title="Scrape selected job sources for fresh postings matching this resume"
                 >
                   {refreshLabel}
@@ -392,13 +399,13 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
           )}
         </div>
       </div>
-      {!isResume && !loading && results && results.length > 0 && scrapeSites && toggleScrapeSite && (
+      {!isResume && !loading && results !== null && scrapeSites && toggleScrapeSite && (
         <div style={{
           display:'flex', alignItems:'center', gap: 6, flexWrap:'wrap',
           padding:'8px 16px 0', fontSize: 11, color:'var(--ink-500)',
         }}>
-          <span style={{marginRight: 4}} title="Pick which job boards to scrape when you click Refresh. Pills don't filter the result list — they choose where to fetch new postings from.">
-            Scrape from:
+          <span style={{marginRight: 4}} title="Toggling a pill filters the result list and selects which sites the Refresh button scrapes. 'Sample / User' is filter-only — it covers the CSV seed and rows submitted via the Add Data page.">
+            Sources:
           </span>
           {SCRAPE_SITES.map(s => {
             const active = scrapeSites.includes(s.id);
@@ -407,12 +414,14 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
                 key={s.id}
                 onClick={() => toggleScrapeSite(s.id)}
                 disabled={refreshing}
+                title={s.scrapeable ? 'Scrape source + result filter' : 'Result filter only (not scrape-capable)'}
                 style={{
                   height: 22, fontSize: 11, padding:'0 10px', borderRadius: 999,
                   border: '0.5px solid var(--border)',
                   background: active ? 'var(--purple-100)' : 'transparent',
                   color: active ? 'var(--purple-700)' : 'var(--ink-500)',
                   fontWeight: active ? 500 : 400,
+                  fontStyle: s.scrapeable ? 'normal' : 'italic',
                   cursor: refreshing ? 'not-allowed' : 'pointer',
                   opacity: refreshing ? 0.6 : 1,
                 }}
@@ -437,8 +446,17 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
         {!loading && !results && <EmptyState mode={mode} error={error} />}
         {!loading && results && results.length === 0 && (
           <div style={{padding:'60px 20px', textAlign:'center', color:'var(--ink-500)', fontSize: 13}}>
-            <div style={{marginBottom: 8}}>No results yet — the database may still be populating.</div>
-            <div className="tiny muted">Migration runs in the background. Try again in a few minutes.</div>
+            {!isResume && scrapeSites && scrapeSites.length < ALL_PILL_IDS.length ? (
+              <>
+                <div style={{marginBottom: 8}}>No results match the selected sources.</div>
+                <div className="tiny muted">Toggle more pills above, or click "Refresh from …" to scrape fresh postings.</div>
+              </>
+            ) : (
+              <>
+                <div style={{marginBottom: 8}}>No results yet — the database may still be populating.</div>
+                <div className="tiny muted">Migration runs in the background. Try again in a few minutes.</div>
+              </>
+            )}
           </div>
         )}
         {!loading && sorted && sorted.map(item => (
@@ -630,7 +648,8 @@ function MatchPage() {
   const [feedback, setFeedback] = React.useState({});
   const [refreshing, setRefreshing] = React.useState(false);
   const [refreshMsg, setRefreshMsg] = React.useState(null);
-  const [scrapeSites, setScrapeSites] = React.useState(['indeed']);
+  const [scrapeSites, setScrapeSites] = React.useState(ALL_PILL_IDS);
+  const skipNextSourcesEffect = React.useRef(true);
 
   // Reset when switching tabs
   React.useEffect(() => {
@@ -656,12 +675,16 @@ function MatchPage() {
 
     try {
       const endpoint = mode === 'r2j' ? 'resume-jobs' : 'job-resumes';
-      const data = await apiMatch(endpoint, {
+      const body = {
         text:       queryText,
         model_name: MODEL_NAME,
         top_k:      topK,
         rerank:     true,
-      });
+      };
+      // Source filter only applies to Resume → Jobs (resumes table has no
+      // matching pill mapping).
+      if (mode === 'r2j') body.sources = scrapeSites;
+      const data = await apiMatch(endpoint, body);
 
       const normalize = mode === 'r2j' ? normalizeJob : normalizeResume;
       setResults((data.results || []).map(normalize));
@@ -715,6 +738,24 @@ function MatchPage() {
   const toggleScrapeSite = (id) => {
     setScrapeSites(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
   };
+
+  // Auto-rerun the match when the user toggles source pills (r2j only).
+  // Skip the first render and any tab-switch reset.
+  React.useEffect(() => {
+    if (skipNextSourcesEffect.current) {
+      skipNextSourcesEffect.current = false;
+      return;
+    }
+    if (mode !== 'r2j') return;
+    if (results === null || loading || refreshing) return;
+    submit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrapeSites]);
+
+  // Skip the auto-rerun on tab changes (mode reset already clears results).
+  React.useEffect(() => {
+    skipNextSourcesEffect.current = true;
+  }, [mode]);
 
   return (
     <div className="match-shell" data-screen-label="02 Match">
