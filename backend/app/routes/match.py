@@ -86,9 +86,10 @@ def match_resume_to_jobs(req: MatchRequest):
                 "eval_id": None,
             }
 
-        # 3. Optionally rerank with cross-encoder, then trim to top_k
+        # 3. Optionally rerank with cross-encoder, then trim to top_k.
+        #    Either way we always fetch full_text for the kept candidates so
+        #    the result loop can extract clean skill keywords for display.
         if req.rerank and candidates:
-            # We need full_text for cross-encoder — fetch it
             ids = [c["id"] for c in candidates]
             ft_res = (
                 supabase.table("jobs")
@@ -102,13 +103,28 @@ def match_resume_to_jobs(req: MatchRequest):
             candidates = rerank(req.text, candidates, text_key="full_text", top_k=req.top_k)
         else:
             candidates = candidates[: req.top_k]
+            ids = [c["id"] for c in candidates]
+            ft_res = (
+                supabase.table("jobs")
+                .select("id, full_text")
+                .in_("id", ids)
+                .execute()
+            )
+            ft_map = {str(r["id"]): r["full_text"] for r in (ft_res.data or [])}
+            for c in candidates:
+                c["full_text"] = ft_map.get(str(c["id"]), "")
 
-        # 4. Build skill overlap per result
+        # 4. Build skill overlap per result.
+        #    Prefer skills extracted from the description text (clean,
+        #    keyword-list driven); fall back to the noisy stored skills
+        #    array only when extraction yields nothing.
         resume_skills = set(extract_skills(req.text))
 
         results = []
         for c in candidates:
-            job_skills = set(c.get("skills") or [])
+            extracted = set(extract_skills(c.get("full_text", "")))
+            stored = set(c.get("skills") or [])
+            job_skills = extracted or stored
             matched = sorted(resume_skills & job_skills)
             missing = sorted(job_skills - resume_skills)
             results.append(

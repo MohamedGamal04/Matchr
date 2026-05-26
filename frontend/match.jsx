@@ -244,7 +244,39 @@ function EmptyState({ mode, error }) {
   );
 }
 
+// ── Result sorting ───────────────────────────────────────────────────────────
+
+function parseSalary(s) {
+  // "$59K-$99K" → 59000; "$210k–260k" → 210000; "$140k-180k" → 140000
+  const m = String(s || '').match(/\$?\s*(\d+(?:\.\d+)?)\s*([Kk]?)/);
+  if (!m) return -1;
+  return parseFloat(m[1]) * (m[2] ? 1000 : 1);
+}
+function parseExperience(s) {
+  // "5 to 15 Years" → 5; "5+ yrs" → 5
+  const m = String(s || '').match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : -1;
+}
+function sortResults(items, sort) {
+  const copy = [...items];
+  switch (sort) {
+    case 'salary':
+      return copy.sort((a, b) => parseSalary(b.salary) - parseSalary(a.salary));
+    case 'experience':
+      return copy.sort((a, b) => parseExperience(b.experience) - parseExperience(a.experience));
+    case 'work_type':
+      return copy.sort((a, b) => String(a.type || '').localeCompare(String(b.type || '')));
+    case 'score':
+    default:
+      return copy.sort((a, b) => b.score - a.score);
+  }
+}
+
 function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId }) {
+  const [sort, setSort] = React.useState('score');
+  const isResume = mode === 'j2r';
+  const sorted = results ? sortResults(results, sort) : null;
+
   return (
     <section className="panel" data-screen-label="Results">
       <div className="results-head">
@@ -254,9 +286,20 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
           {!loading && elapsed && <span className="tiny muted">{elapsed}ms</span>}
         </div>
         <div className="results-actions">
-          {!loading && results && (
+          {!loading && results && results.length > 0 && (
             <>
-              <button className="btn btn-naked" style={{height: 26, fontSize: 12}}>Sort: Score</button>
+              <select
+                className="select"
+                style={{height: 26, fontSize: 12, padding:'0 8px'}}
+                value={sort}
+                onChange={(e)=>setSort(e.target.value)}
+                title="Sort by"
+              >
+                <option value="score">Sort: Score</option>
+                {!isResume && <option value="salary">Sort: Salary</option>}
+                {!isResume && <option value="experience">Sort: Experience</option>}
+                {!isResume && <option value="work_type">Sort: Work type</option>}
+              </select>
               <button className="btn btn-naked" style={{height: 26, fontSize: 12}} onClick={onRerun}>
                 Re-run
               </button>
@@ -273,7 +316,7 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
             <div className="tiny muted">Migration runs in the background. Try again in a few minutes.</div>
           </div>
         )}
-        {!loading && results && results.map(item => (
+        {!loading && sorted && sorted.map(item => (
           <ResultCard
             key={item.id}
             item={item}
