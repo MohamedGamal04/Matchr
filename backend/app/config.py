@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # Optional
     hf_token: str | None = None
 
+    # Gates the mutating endpoints (/api/ingest/*, /api/scrape/*).
+    # Unset → endpoints are open (local dev). Set → clients must send
+    # `X-API-Key: <value>` header.
+    api_key: str | None = None
+
     # Rate-limit defaults (slowapi syntax). Override per env if needed.
     rate_limit_match:  str = "20/minute"
     rate_limit_scrape: str = "3/minute"

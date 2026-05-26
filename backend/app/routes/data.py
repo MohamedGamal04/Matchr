@@ -17,7 +17,7 @@ import logging
 import re
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.config import settings
 from app.models.schemas import (
@@ -25,13 +25,14 @@ from app.models.schemas import (
     IngestResponse,
     IngestResumeRequest,
 )
+from app.services.auth import require_api_key
 from app.services.embedder import encode_document
 from app.services.limiter import limiter
 from app.services.preprocessor import sanitize_preview
 from app.services.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key)])
 
 MAX_TEXT_CHARS = 4000  # mirror migrate_*.py — keep stored full_text bounded
 

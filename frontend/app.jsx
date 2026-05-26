@@ -1,6 +1,8 @@
 // App root — hash routing + optional cold-start banner
 
-const API_BASE_FALLBACK = (typeof API_BASE !== 'undefined' ? API_BASE : 'http://localhost:8000');
+const API_BASE_FALLBACK =
+  (typeof API_BASE !== 'undefined' ? API_BASE
+   : (typeof window !== 'undefined' && window.MATCHR_API) || 'http://localhost:8000');
 
 function App() {
   // Hash routing

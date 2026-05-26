@@ -1,11 +1,16 @@
 // Add Data page — submit resumes / jobs into the live Supabase database.
 
-const ADD_API_BASE = (typeof API_BASE !== 'undefined' ? API_BASE : 'http://localhost:8000');
+const ADD_API_BASE = (typeof API_BASE !== 'undefined' ? API_BASE
+                     : (typeof window !== 'undefined' && window.MATCHR_API) || 'http://localhost:8000');
+const ADD_API_KEY  = (typeof API_KEY !== 'undefined' ? API_KEY
+                     : (typeof window !== 'undefined' && window.MATCHR_API_KEY) || null);
 
 async function apiIngest(kind, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (ADD_API_KEY) headers['X-API-Key'] = ADD_API_KEY;
   const res = await fetch(`${ADD_API_BASE}/api/ingest/${kind}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));

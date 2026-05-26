@@ -1,6 +1,7 @@
 // Match page — three tabs, upload, results
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE   = (typeof window !== 'undefined' && window.MATCHR_API)     || 'http://localhost:8000';
+const API_KEY    = (typeof window !== 'undefined' && window.MATCHR_API_KEY) || null;
 const MODEL_NAME = 'BAAI/bge-large-en-v1.5';
 
 // Glassdoor / ZipRecruiter / Google Jobs were removed — JobSpy's scrapers
@@ -68,9 +69,11 @@ async function apiScrapeJobs(text, allSelectedSites, opts = {}) {
   const body = { text, location: 'remote', results_wanted: per_site, sites };
   if (opts.searchTerm && opts.searchTerm.trim()) body.search_term = opts.searchTerm.trim();
   if (opts.country && opts.country.trim())       body.country     = opts.country.trim();
+  const headers = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
   const res = await fetch(`${API_BASE}/api/scrape/jobs-for-query`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));

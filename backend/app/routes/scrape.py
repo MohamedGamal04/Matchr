@@ -10,15 +10,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.config import settings
 from app.models.schemas import ScrapeRequest, ScrapeResponse
+from app.services.auth import require_api_key
 from app.services.limiter import limiter
 from app.services.scraper import extract_query_from_text, scrape_and_upsert
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key)])
 
 
 @router.post("/jobs-for-query", response_model=ScrapeResponse)
