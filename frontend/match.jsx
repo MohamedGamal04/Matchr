@@ -397,7 +397,9 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
           display:'flex', alignItems:'center', gap: 6, flexWrap:'wrap',
           padding:'8px 16px 0', fontSize: 11, color:'var(--ink-500)',
         }}>
-          <span style={{marginRight: 4}}>Sources:</span>
+          <span style={{marginRight: 4}} title="Pick which job boards to scrape when you click Refresh. Pills don't filter the result list — they choose where to fetch new postings from.">
+            Scrape from:
+          </span>
           {SCRAPE_SITES.map(s => {
             const active = scrapeSites.includes(s.id);
             return (
@@ -680,11 +682,28 @@ function MatchPage() {
     try {
       const data = await apiScrapeJobs(queryText, scrapeSites);
       const inserted = data.inserted ?? 0;
-      const where = scrapeSites.map(s => SITE_LABEL[s] || s).join(', ');
-      setRefreshMsg({
-        ok: true,
-        msg: `Added ${inserted} job${inserted === 1 ? '' : 's'} from ${where} (search: "${data.search_term}"). Refreshing results…`,
-      });
+      const scraped  = data.scraped  ?? 0;
+      const where    = scrapeSites.map(s => SITE_LABEL[s] || s).join(', ');
+      const breakdown = data.by_site
+        ? Object.entries(data.by_site)
+            .map(([s, n]) => `${SITE_LABEL[s] || s}: ${n}`)
+            .join(', ')
+        : '';
+
+      let msg;
+      if (scraped === 0) {
+        msg = `0 jobs returned from ${where} for "${data.search_term}". ` +
+              `The site may be rate-limiting, or the query needs to be shorter / more generic.`;
+        setRefreshMsg({ ok: false, msg });
+      } else if (inserted === 0) {
+        msg = `Found ${scraped} job${scraped === 1 ? '' : 's'} (${breakdown}) ` +
+              `but they were already in the database. Search: "${data.search_term}".`;
+        setRefreshMsg({ ok: true, msg });
+      } else {
+        msg = `Added ${inserted} new job${inserted === 1 ? '' : 's'} ` +
+              `(${breakdown}) for "${data.search_term}". Refreshing results…`;
+        setRefreshMsg({ ok: true, msg });
+      }
       await submit();
     } catch (e) {
       setRefreshMsg({ ok: false, msg: `Scrape failed: ${e.message}` });

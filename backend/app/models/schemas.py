@@ -115,3 +115,4 @@ class ScrapeResponse(BaseModel):
     inserted: int
     errors: int
     error_message: Optional[str] = None
+    by_site: dict[str, int] = Field(default_factory=dict)

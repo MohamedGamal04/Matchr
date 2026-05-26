@@ -36,24 +36,38 @@ _ROLE_KEYWORDS = [
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
+_TITLE_SEPARATORS = ["—", "–", " - ", " | ", ":", ","]
+
+
 def extract_query_from_text(text: str, max_len: int = 80) -> str:
     """
-    Pick a reasonable Indeed-search query from a resume or job description.
+    Pick a reasonable job-board search query from a resume or job description.
 
     Strategy:
-      1. Scan the first 12 lines for a short line containing a role keyword
-         (e.g. "Senior Machine Learning Engineer"). Use it if found.
-      2. Fall back to the top 3 keywords from `extract_skills`.
-      3. Last resort: first 80 chars of cleaned text.
+      1. Scan the first 12 lines for one containing a role keyword.
+      2. Strip name-like prefix on that line by splitting on common separators
+         ("—", "–", " - ", " | ", ":", ",") and keeping the longest part that
+         still contains a role keyword. So "Maya Chen — Senior Machine
+         Learning Engineer" becomes "Senior Machine Learning Engineer".
+      3. Fall back to the top 3 keywords from `extract_skills`.
+      4. Last resort: first `max_len` chars of cleaned text.
     """
     cleaned = re.sub(r"\s+", " ", text or "").strip()
     if not cleaned:
         return ""
 
-    for line in (text or "").split("\n")[:12]:
-        line = line.strip("•- *\t ").strip()
-        if 5 < len(line) < 100 and any(k in line.lower() for k in _ROLE_KEYWORDS):
-            return line[:max_len]
+    for raw in (text or "").split("\n")[:12]:
+        line = raw.strip("•- *\t ").strip()
+        if not (5 < len(line) < 100 and any(k in line.lower() for k in _ROLE_KEYWORDS)):
+            continue
+        for sep in _TITLE_SEPARATORS:
+            if sep in line:
+                parts = [p.strip() for p in line.split(sep) if p.strip()]
+                role_parts = [p for p in parts if any(k in p.lower() for k in _ROLE_KEYWORDS)]
+                if role_parts:
+                    line = max(role_parts, key=len)
+                    break
+        return line[:max_len]
 
     skills = extract_skills(cleaned)[:3]
     if skills:
@@ -106,7 +120,16 @@ def scrape_and_upsert(
         }
 
     if df is None or df.empty:
-        return {"search_term": search_term, "scraped": 0, "inserted": 0, "errors": 0}
+        return {
+            "search_term": search_term, "scraped": 0, "inserted": 0,
+            "errors": 0, "by_site": {s: 0 for s in site_list},
+        }
+
+    # Per-site counts before dedup, useful for the UI banner.
+    by_site: dict[str, int] = {s: 0 for s in site_list}
+    if "site" in df.columns:
+        for s, count in df["site"].fillna("unknown").value_counts().items():
+            by_site[str(s)] = int(count)
 
     records, seen = [], set()
     for _, row in df.iterrows():
@@ -152,6 +175,7 @@ def scrape_and_upsert(
             "scraped": int(len(df)),
             "inserted": 0,
             "errors": 0,
+            "by_site": by_site,
         }
 
     supabase = get_supabase()
@@ -179,6 +203,7 @@ def scrape_and_upsert(
         "deduped":     len(records),
         "inserted":    inserted,
         "errors":      errors,
+        "by_site":     by_site,
     }
 
 
