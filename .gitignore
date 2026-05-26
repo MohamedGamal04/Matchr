@@ -37,5 +37,9 @@ Thumbs.db
 # Large local datasets (not committed; downloaded via migration scripts)
 samples/*.csv
 
+# Local test fixtures dropped into the repo root for quick iteration
+resume.txt
+*.resume.txt
+
 # Claude Code local config (contains MCP access tokens)
 .claude/
