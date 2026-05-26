@@ -3,6 +3,14 @@
 const API_BASE = 'http://localhost:8000';
 const MODEL_NAME = 'BAAI/bge-large-en-v1.5';
 
+const SCRAPE_SITES = [
+  { id: 'indeed',        label: 'Indeed' },
+  { id: 'glassdoor',     label: 'Glassdoor' },
+  { id: 'zip_recruiter', label: 'ZipRecruiter' },
+  { id: 'google',        label: 'Google Jobs' },
+];
+const SITE_LABEL = Object.fromEntries(SCRAPE_SITES.map(s => [s.id, s.label]));
+
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 function formatDetail(detail, status) {
@@ -42,11 +50,14 @@ async function apiFeedback(evalId, resultId, action) {
   } catch (_) {}
 }
 
-async function apiScrapeJobs(text) {
+async function apiScrapeJobs(text, sites = ['indeed']) {
+  // Smaller per-site batch when several sources are selected, to keep total
+  // scrape time roughly bounded (~30-60s).
+  const per_site = sites.length <= 1 ? 25 : sites.length === 2 ? 20 : 15;
   const res = await fetch(`${API_BASE}/api/scrape/jobs-for-query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, location: 'remote', results_wanted: 25, sites: ['indeed'] }),
+    body: JSON.stringify({ text, location: 'remote', results_wanted: per_site, sites }),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(formatDetail(json.detail, res.status));
@@ -327,10 +338,18 @@ function sortResults(items, sort) {
   }
 }
 
-function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId, onRefreshFromIndeed, refreshing, refreshMsg }) {
+function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId, onRefreshFromSources, refreshing, refreshMsg, scrapeSites, toggleScrapeSite }) {
   const [sort, setSort] = React.useState('score');
   const isResume = mode === 'j2r';
   const sorted = results ? sortResults(results, sort) : null;
+
+  const refreshLabel = (() => {
+    if (refreshing) return 'Scraping…';
+    if (!scrapeSites || scrapeSites.length === 0) return 'Pick a source';
+    if (scrapeSites.length === 1) return `Refresh from ${SITE_LABEL[scrapeSites[0]] || scrapeSites[0]}`;
+    if (scrapeSites.length === SCRAPE_SITES.length) return `Refresh from all ${SCRAPE_SITES.length} sources`;
+    return `Refresh from ${scrapeSites.length} sources`;
+  })();
 
   return (
     <section className="panel" data-screen-label="Results">
@@ -355,15 +374,15 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
                 {!isResume && <option value="experience">Sort: Experience</option>}
                 {!isResume && <option value="work_type">Sort: Work type</option>}
               </select>
-              {!isResume && onRefreshFromIndeed && (
+              {!isResume && onRefreshFromSources && (
                 <button
                   className="btn btn-naked"
                   style={{height: 26, fontSize: 12}}
-                  onClick={onRefreshFromIndeed}
-                  disabled={refreshing}
-                  title="Scrape Indeed for fresh jobs matching this resume (~30s)"
+                  onClick={onRefreshFromSources}
+                  disabled={refreshing || !scrapeSites || scrapeSites.length === 0}
+                  title="Scrape selected job sources for fresh postings matching this resume"
                 >
-                  {refreshing ? 'Scraping Indeed…' : 'Refresh from Indeed'}
+                  {refreshLabel}
                 </button>
               )}
               <button className="btn btn-naked" style={{height: 26, fontSize: 12}} onClick={onRerun}>
@@ -373,9 +392,38 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
           )}
         </div>
       </div>
+      {!isResume && !loading && results && results.length > 0 && scrapeSites && toggleScrapeSite && (
+        <div style={{
+          display:'flex', alignItems:'center', gap: 6, flexWrap:'wrap',
+          padding:'8px 16px 0', fontSize: 11, color:'var(--ink-500)',
+        }}>
+          <span style={{marginRight: 4}}>Sources:</span>
+          {SCRAPE_SITES.map(s => {
+            const active = scrapeSites.includes(s.id);
+            return (
+              <button
+                key={s.id}
+                onClick={() => toggleScrapeSite(s.id)}
+                disabled={refreshing}
+                style={{
+                  height: 22, fontSize: 11, padding:'0 10px', borderRadius: 999,
+                  border: '0.5px solid var(--border)',
+                  background: active ? 'var(--purple-100)' : 'transparent',
+                  color: active ? 'var(--purple-700)' : 'var(--ink-500)',
+                  fontWeight: active ? 500 : 400,
+                  cursor: refreshing ? 'not-allowed' : 'pointer',
+                  opacity: refreshing ? 0.6 : 1,
+                }}
+              >
+                {s.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {refreshMsg && (
         <div style={{
-          margin:'0 16px', padding:'8px 12px', borderRadius: 6, fontSize: 12,
+          margin:'8px 16px 0', padding:'8px 12px', borderRadius: 6, fontSize: 12,
           background: refreshMsg.ok ? '#ECFDF5' : '#FEF2F2',
           color:      refreshMsg.ok ? '#047857' : '#EF4444',
         }}>
@@ -580,6 +628,7 @@ function MatchPage() {
   const [feedback, setFeedback] = React.useState({});
   const [refreshing, setRefreshing] = React.useState(false);
   const [refreshMsg, setRefreshMsg] = React.useState(null);
+  const [scrapeSites, setScrapeSites] = React.useState(['indeed']);
 
   // Reset when switching tabs
   React.useEffect(() => {
@@ -623,17 +672,18 @@ function MatchPage() {
     }
   };
 
-  const refreshFromIndeed = async () => {
+  const refreshFromSources = async () => {
     const queryText = file?.content || text;
-    if (!queryText?.trim() || refreshing) return;
+    if (!queryText?.trim() || refreshing || scrapeSites.length === 0) return;
     setRefreshing(true);
     setRefreshMsg(null);
     try {
-      const data = await apiScrapeJobs(queryText);
+      const data = await apiScrapeJobs(queryText, scrapeSites);
       const inserted = data.inserted ?? 0;
+      const where = scrapeSites.map(s => SITE_LABEL[s] || s).join(', ');
       setRefreshMsg({
         ok: true,
-        msg: `Added ${inserted} job${inserted === 1 ? '' : 's'} from Indeed (search: "${data.search_term}"). Refreshing results…`,
+        msg: `Added ${inserted} job${inserted === 1 ? '' : 's'} from ${where} (search: "${data.search_term}"). Refreshing results…`,
       });
       await submit();
     } catch (e) {
@@ -641,6 +691,10 @@ function MatchPage() {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const toggleScrapeSite = (id) => {
+    setScrapeSites(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
   };
 
   return (
@@ -671,9 +725,11 @@ function MatchPage() {
             onRerun={submit}
             feedback={feedback} setFeedback={setFeedback}
             evalId={evalId}
-            onRefreshFromIndeed={refreshFromIndeed}
+            onRefreshFromSources={refreshFromSources}
             refreshing={refreshing}
             refreshMsg={refreshMsg}
+            scrapeSites={scrapeSites}
+            toggleScrapeSite={toggleScrapeSite}
           />
         </div>
       ) : (
