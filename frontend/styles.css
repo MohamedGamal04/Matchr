@@ -564,12 +564,15 @@ textarea { resize: vertical; }
   content: '';
   position: absolute;
   right: 10px;
-  top: 50%;
+  /* Anchor to the select (32px tall, sits at the bottom of the wrapper)
+     instead of the whole wrapper height — the wrapper also contains the
+     label above, which threw the previous top: 50% off-center. */
+  bottom: 13px;
   width: 6px;
   height: 6px;
   border-right: 1px solid var(--ink-500);
   border-bottom: 1px solid var(--ink-500);
-  transform: translateY(-70%) rotate(45deg);
+  transform: rotate(45deg);
   pointer-events: none;
 }
 
