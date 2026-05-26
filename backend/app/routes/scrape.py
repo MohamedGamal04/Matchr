@@ -29,6 +29,7 @@ def scrape_jobs_for_query(req: ScrapeRequest) -> ScrapeResponse:
         result = scrape_and_upsert(
             search_term=search_term,
             location=req.location,
+            country=req.country,
             results_wanted=req.results_wanted,
             sites=req.sites or ["indeed"],
         )

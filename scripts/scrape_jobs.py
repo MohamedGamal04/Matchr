@@ -63,6 +63,8 @@ def parse_args():
                         "(mutually exclusive with --search).")
     p.add_argument("--location", default="remote",
                    help="Geographic location filter. Default: remote")
+    p.add_argument("--country", default="USA",
+                   help="Country for Indeed (e.g. USA, UK, Germany). Default: USA")
     p.add_argument("--results", type=int, default=25,
                    help="Results per search per site. Default: 25")
     p.add_argument("--hours-old", type=int, default=168,
@@ -108,6 +110,7 @@ def main():
         result = scrape_and_upsert(
             search_term=t,
             location=args.location,
+            country=args.country,
             results_wanted=args.results,
             sites=sites,
             hours_old=args.hours_old,

@@ -113,6 +113,10 @@ class ScrapeRequest(BaseModel):
     search_term: Optional[str] = Field(None, max_length=120,
                                        description="Override the auto-extracted query.")
     location: str = Field("remote", max_length=80)
+    country: Optional[str] = Field(
+        None, max_length=40,
+        description="Country code for Indeed (e.g. 'USA', 'UK', 'Germany'). Defaults to USA when blank.",
+    )
     results_wanted: int = Field(25, ge=1, le=100)
     sites: list[str] = Field(default_factory=lambda: ["indeed"])
 

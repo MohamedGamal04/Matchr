@@ -14,6 +14,12 @@ const SITE_LABEL = Object.fromEntries(SCRAPE_SITES.map(s => [s.id, s.label]));
 const SCRAPEABLE_IDS = SCRAPE_SITES.filter(s => s.scrapeable).map(s => s.id);
 const ALL_PILL_IDS  = SCRAPE_SITES.map(s => s.id);
 
+const COUNTRIES = [
+  'USA', 'UK', 'Canada', 'Australia', 'Germany', 'France', 'Spain', 'Italy',
+  'Netherlands', 'Switzerland', 'Ireland', 'India', 'Singapore', 'Japan',
+  'UAE', 'Saudi Arabia', 'Egypt', 'Brazil', 'Mexico', 'South Africa',
+];
+
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 function formatDetail(detail, status) {
@@ -53,17 +59,19 @@ async function apiFeedback(evalId, resultId, action) {
   } catch (_) {}
 }
 
-async function apiScrapeJobs(text, allSelectedSites) {
-  // Only scrape the JobSpy-capable sources. The 'other' pill is filter-only.
+async function apiScrapeJobs(text, allSelectedSites, opts = {}) {
   const sites = allSelectedSites.filter(s => SCRAPEABLE_IDS.includes(s));
   if (sites.length === 0) {
-    throw new Error('Pick at least one scrapeable source (Indeed / Glassdoor / ZipRecruiter / Google Jobs).');
+    throw new Error('Pick at least one scrapeable source (currently: Indeed).');
   }
   const per_site = sites.length <= 1 ? 25 : sites.length === 2 ? 20 : 15;
+  const body = { text, location: 'remote', results_wanted: per_site, sites };
+  if (opts.searchTerm && opts.searchTerm.trim()) body.search_term = opts.searchTerm.trim();
+  if (opts.country && opts.country.trim())       body.country     = opts.country.trim();
   const res = await fetch(`${API_BASE}/api/scrape/jobs-for-query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, location: 'remote', results_wanted: per_site, sites }),
+    body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(formatDetail(json.detail, res.status));
@@ -344,7 +352,7 @@ function sortResults(items, sort) {
   }
 }
 
-function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId, onRefreshFromSources, refreshing, refreshMsg, scrapeSites, toggleScrapeSite }) {
+function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId, onRefreshFromSources, refreshing, refreshMsg, scrapeSites, toggleScrapeSite, scrapeCountry, setScrapeCountry, searchOverride, setSearchOverride }) {
   const [sort, setSort] = React.useState('score');
   const isResume = mode === 'j2r';
   const sorted = results ? sortResults(results, sort) : null;
@@ -400,37 +408,73 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
         </div>
       </div>
       {!isResume && !loading && results !== null && scrapeSites && toggleScrapeSite && (
-        <div style={{
-          display:'flex', alignItems:'center', gap: 6, flexWrap:'wrap',
-          padding:'8px 16px 0', fontSize: 11, color:'var(--ink-500)',
-        }}>
-          <span style={{marginRight: 4}} title="Toggling a pill filters the result list and selects which sites the Refresh button scrapes. 'Sample / User' is filter-only — it covers the CSV seed and rows submitted via the Add Data page.">
-            Sources:
-          </span>
-          {SCRAPE_SITES.map(s => {
-            const active = scrapeSites.includes(s.id);
-            return (
-              <button
-                key={s.id}
-                onClick={() => toggleScrapeSite(s.id)}
-                disabled={refreshing}
-                title={s.scrapeable ? 'Scrape source + result filter' : 'Result filter only (not scrape-capable)'}
-                style={{
-                  height: 22, fontSize: 11, padding:'0 10px', borderRadius: 999,
-                  border: '0.5px solid var(--border)',
-                  background: active ? 'var(--purple-100)' : 'transparent',
-                  color: active ? 'var(--purple-700)' : 'var(--ink-500)',
-                  fontWeight: active ? 500 : 400,
-                  fontStyle: s.scrapeable ? 'normal' : 'italic',
-                  cursor: refreshing ? 'not-allowed' : 'pointer',
-                  opacity: refreshing ? 0.6 : 1,
-                }}
-              >
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
+        <>
+          <div style={{
+            display:'flex', alignItems:'center', gap: 6, flexWrap:'wrap',
+            padding:'8px 16px 0', fontSize: 11, color:'var(--ink-500)',
+          }}>
+            <span style={{marginRight: 4}} title="Toggling a pill filters the result list and selects which sites the Refresh button scrapes. 'Sample / User' is filter-only — it covers the CSV seed and rows submitted via the Add Data page.">
+              Sources:
+            </span>
+            {SCRAPE_SITES.map(s => {
+              const active = scrapeSites.includes(s.id);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => toggleScrapeSite(s.id)}
+                  disabled={refreshing}
+                  title={s.scrapeable ? 'Scrape source + result filter' : 'Result filter only (not scrape-capable)'}
+                  style={{
+                    height: 22, fontSize: 11, padding:'0 10px', borderRadius: 999,
+                    border: '0.5px solid var(--border)',
+                    background: active ? 'var(--purple-100)' : 'transparent',
+                    color: active ? 'var(--purple-700)' : 'var(--ink-500)',
+                    fontWeight: active ? 500 : 400,
+                    fontStyle: s.scrapeable ? 'normal' : 'italic',
+                    cursor: refreshing ? 'not-allowed' : 'pointer',
+                    opacity: refreshing ? 0.6 : 1,
+                  }}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+          {setScrapeCountry && setSearchOverride && (
+            <div style={{
+              display:'flex', alignItems:'center', gap: 8, flexWrap:'wrap',
+              padding:'6px 16px 0', fontSize: 11, color:'var(--ink-500)',
+            }}>
+              <label style={{display:'flex', alignItems:'center', gap: 4}}
+                     title="Which country's Indeed to query (e.g. indeed.com vs indeed.co.uk).">
+                Country:
+                <select
+                  value={scrapeCountry}
+                  onChange={(e)=>setScrapeCountry(e.target.value)}
+                  disabled={refreshing}
+                  style={{height: 22, fontSize: 11, padding:'0 6px', borderRadius: 4,
+                          border:'0.5px solid var(--border)', background:'transparent', color:'inherit'}}
+                >
+                  {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+              <label style={{display:'flex', alignItems:'center', gap: 4, flex: 1, minWidth: 220}}
+                     title="What to search Indeed for. Leave blank to auto-extract a job title from the resume.">
+                Search:
+                <input
+                  type="text"
+                  value={searchOverride}
+                  onChange={(e)=>setSearchOverride(e.target.value)}
+                  disabled={refreshing}
+                  placeholder="auto-detect from resume — or type a job title"
+                  style={{height: 22, fontSize: 11, padding:'0 8px', borderRadius: 4,
+                          border:'0.5px solid var(--border)', background:'transparent',
+                          color:'inherit', flex: 1, minWidth: 180}}
+                />
+              </label>
+            </div>
+          )}
+        </>
       )}
       {refreshMsg && (
         <div style={{
@@ -649,6 +693,8 @@ function MatchPage() {
   const [refreshing, setRefreshing] = React.useState(false);
   const [refreshMsg, setRefreshMsg] = React.useState(null);
   const [scrapeSites, setScrapeSites] = React.useState(ALL_PILL_IDS);
+  const [scrapeCountry, setScrapeCountry] = React.useState('USA');
+  const [searchOverride, setSearchOverride] = React.useState('');
   const skipNextSourcesEffect = React.useRef(true);
 
   // Reset when switching tabs
@@ -703,7 +749,10 @@ function MatchPage() {
     setRefreshing(true);
     setRefreshMsg(null);
     try {
-      const data = await apiScrapeJobs(queryText, scrapeSites);
+      const data = await apiScrapeJobs(queryText, scrapeSites, {
+        searchTerm: searchOverride,
+        country:    scrapeCountry,
+      });
       const inserted = data.inserted ?? 0;
       const scraped  = data.scraped  ?? 0;
       const where    = scrapeSites.map(s => SITE_LABEL[s] || s).join(', ');
@@ -790,6 +839,10 @@ function MatchPage() {
             refreshMsg={refreshMsg}
             scrapeSites={scrapeSites}
             toggleScrapeSite={toggleScrapeSite}
+            scrapeCountry={scrapeCountry}
+            setScrapeCountry={setScrapeCountry}
+            searchOverride={searchOverride}
+            setSearchOverride={setSearchOverride}
           />
         </div>
       ) : (

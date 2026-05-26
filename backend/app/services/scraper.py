@@ -80,11 +80,16 @@ def scrape_and_upsert(
     *,
     search_term: str,
     location: str = "remote",
+    country: str | None = None,
     results_wanted: int = DEFAULT_RESULTS,
     sites: Iterable[str] = DEFAULT_SITES,
     hours_old: int = 168,
 ) -> dict:
-    """Scrape JobSpy → embed → upsert into `jobs`. Returns a summary dict."""
+    """Scrape JobSpy → embed → upsert into `jobs`. Returns a summary dict.
+
+    `country` is forwarded to JobSpy as `country_indeed` (Indeed-only param;
+    the other sites ignore it). Defaults to 'USA' when None.
+    """
     try:
         from jobspy import scrape_jobs as _scrape_jobs
     except ImportError:
@@ -97,9 +102,10 @@ def scrape_and_upsert(
         raise ValueError("search_term cannot be empty")
 
     site_list = [s.strip() for s in sites if s.strip()]
+    indeed_country = (country or "USA").strip() or "USA"
     logger.info(
-        "scrape_and_upsert: term=%r location=%r results=%d sites=%s",
-        search_term, location, results_wanted, site_list,
+        "scrape_and_upsert: term=%r location=%r country=%r results=%d sites=%s",
+        search_term, location, indeed_country, results_wanted, site_list,
     )
 
     try:
@@ -109,7 +115,7 @@ def scrape_and_upsert(
             location=location,
             results_wanted=results_wanted,
             hours_old=hours_old,
-            country_indeed="USA",
+            country_indeed=indeed_country,
             verbose=0,
         )
     except Exception as exc:
