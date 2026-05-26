@@ -4,16 +4,37 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.routes import data, eval, health, match, scrape
 from app.services.embedder import preload_models
+from app.services.limiter import limiter
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+# ── Sentry (no-op when SENTRY_DSN is unset) ──────────────────────────────────
+
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=0.0,           # sampling can be raised post-launch
+        send_default_pii=False,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+    )
+    logger.info("Sentry enabled (environment=%s).", settings.environment)
 
 
 # ── Lifespan: warm-up models at startup ──────────────────────────────────────
@@ -37,6 +58,12 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+# ── Rate limiting (per remote IP via slowapi) ────────────────────────────────
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ── CORS ─────────────────────────────────────────────────────────────────────

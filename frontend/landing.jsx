@@ -33,9 +33,6 @@ function Hero({ onRoute }) {
         <button className="btn btn-primary btn-lg" onClick={()=>onRoute('match')}>
           Try it free <Icon.Arrow />
         </button>
-        <button className="btn btn-ghost btn-lg">
-          <Icon.Play /> Watch demo
-        </button>
       </div>
       <div className="stat-bar">
         <div className="stat">
@@ -212,10 +209,8 @@ function Footer() {
           <span style={{fontSize: 11, color:'var(--ink-400)', marginLeft: 8}}>© 2026</span>
         </div>
         <div className="footer-links">
-          <a className="footer-link" href="#">GitHub</a>
-          <a className="footer-link" href="#">Privacy</a>
-          <a className="footer-link" href="#">Terms</a>
-          <a className="footer-link" href="#">Contact</a>
+          <a className="footer-link" href="https://github.com/MohamedGamal04">GitHub</a>
+          <a className="footer-link" href="https://www.linkedin.com/in/mohamedgamal-zarouk">Contact</a>
         </div>
       </div>
     </footer>

@@ -3,8 +3,9 @@ from __future__ import annotations
 import time
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from app.config import settings
 from app.models.schemas import (
     JobResult,
     MatchRequest,
@@ -15,6 +16,8 @@ from app.models.schemas import (
 from app.services.embedder import encode_query, rerank
 from app.services.preprocessor import extract_skills, overlap_skills
 from app.services.supabase_client import get_supabase
+
+from app.services.limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -78,7 +81,8 @@ def _save_eval(
 
 
 @router.post("/resume-jobs")
-def match_resume_to_jobs(req: MatchRequest):
+@limiter.limit(settings.rate_limit_match)
+def match_resume_to_jobs(request: Request, req: MatchRequest):
     """
     Resume → Jobs
     Upload a resume; get back a ranked list of matching job postings.
@@ -202,7 +206,8 @@ def match_resume_to_jobs(req: MatchRequest):
 
 
 @router.post("/job-resumes")
-def match_job_to_resumes(req: MatchRequest):
+@limiter.limit(settings.rate_limit_match)
+def match_job_to_resumes(request: Request, req: MatchRequest):
     """
     Job → Resumes
     Submit a job description; get back the most relevant candidate resumes.
@@ -302,7 +307,8 @@ def match_job_to_resumes(req: MatchRequest):
 
 
 @router.post("/one-to-one", response_model=OneToOneResponse)
-def match_one_to_one(req: OneToOneRequest):
+@limiter.limit(settings.rate_limit_match)
+def match_one_to_one(request: Request, req: OneToOneRequest):
     """
     One-to-one
     Compute direct similarity between a single job description and a single resume.

@@ -17,7 +17,7 @@ import logging
 import re
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from app.config import settings
 from app.models.schemas import (
@@ -26,6 +26,7 @@ from app.models.schemas import (
     IngestResumeRequest,
 )
 from app.services.embedder import encode_document
+from app.services.limiter import limiter
 from app.services.preprocessor import sanitize_preview
 from app.services.supabase_client import get_supabase
 
@@ -43,7 +44,8 @@ def _clean(text: str) -> str:
 
 
 @router.post("/resume", response_model=IngestResponse, status_code=201)
-def ingest_resume(req: IngestResumeRequest) -> IngestResponse:
+@limiter.limit(settings.rate_limit_ingest)
+def ingest_resume(request: Request, req: IngestResumeRequest) -> IngestResponse:
     full_text = _clean(req.full_text)[:MAX_TEXT_CHARS]
     if len(full_text) < 50:
         raise HTTPException(status_code=422, detail="full_text too short after cleaning")
@@ -75,7 +77,8 @@ def ingest_resume(req: IngestResumeRequest) -> IngestResponse:
 
 
 @router.post("/job", response_model=IngestResponse, status_code=201)
-def ingest_job(req: IngestJobRequest) -> IngestResponse:
+@limiter.limit(settings.rate_limit_ingest)
+def ingest_job(request: Request, req: IngestJobRequest) -> IngestResponse:
     full_text = _clean(req.full_text)[:MAX_TEXT_CHARS]
     if len(full_text) < 50:
         raise HTTPException(status_code=422, detail="full_text too short after cleaning")

@@ -764,12 +764,12 @@ function MatchPage() {
 
       let msg;
       if (scraped === 0) {
-        msg = `0 jobs returned from ${where} for "${data.search_term}". ` +
-              `The site may be rate-limiting, or the query needs to be shorter / more generic.`;
-        setRefreshMsg({ ok: false, msg });
+        msg = `No new postings from ${where} for "${data.search_term}" right now ` +
+              `— Indeed often rate-limits cloud IPs. Showing existing results.`;
+        setRefreshMsg({ ok: true, msg });
       } else if (inserted === 0) {
         msg = `Found ${scraped} job${scraped === 1 ? '' : 's'} (${breakdown}) ` +
-              `but they were already in the database. Search: "${data.search_term}".`;
+              `but they were already in the database. Showing existing results.`;
         setRefreshMsg({ ok: true, msg });
       } else {
         msg = `Added ${inserted} new job${inserted === 1 ? '' : 's'} ` +

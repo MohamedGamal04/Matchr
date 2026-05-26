@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from app.config import settings
 from app.models.schemas import ScrapeRequest, ScrapeResponse
+from app.services.limiter import limiter
 from app.services.scraper import extract_query_from_text, scrape_and_upsert
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,8 @@ router = APIRouter()
 
 
 @router.post("/jobs-for-query", response_model=ScrapeResponse)
-def scrape_jobs_for_query(req: ScrapeRequest) -> ScrapeResponse:
+@limiter.limit(settings.rate_limit_scrape)
+def scrape_jobs_for_query(request: Request, req: ScrapeRequest) -> ScrapeResponse:
     search_term = (req.search_term or "").strip() or extract_query_from_text(req.text)
     if not search_term:
         raise HTTPException(status_code=422, detail="Could not derive a search term from the input text.")

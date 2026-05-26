@@ -1,18 +1,6 @@
-// App root — routing + Tweaks panel
+// App root — hash routing + optional cold-start banner
 
-const TWEAK_DEFAULTS = {
-  "accent": "#6C5CE7",
-  "density": "comfortable",
-  "borderStyle": "hairline",
-  "showFeedback": true
-};
-
-const ACCENT_OPTIONS = [
-  '#6C5CE7', // brand purple
-  '#7C3AED', // saturated violet
-  '#2A6FDB', // electric blue
-  '#1F8A5B'  // forest green
-];
+const API_BASE_FALLBACK = (typeof API_BASE !== 'undefined' ? API_BASE : 'http://localhost:8000');
 
 function App() {
   // Hash routing
@@ -34,89 +22,47 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
-  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
-
-  // Apply tweaks via CSS vars
+  // Cold-start detection: ping /api/health on first paint. If it doesn't
+  // respond within ~3s we assume the HF Space is waking up and show a banner.
+  const [warming, setWarming] = React.useState(false);
   React.useEffect(() => {
-    const root = document.documentElement;
-    const accent = tweaks.accent;
-    root.style.setProperty('--purple', accent);
-    root.style.setProperty('--purple-hover', shade(accent, -0.08));
-    root.style.setProperty('--purple-pressed', shade(accent, -0.16));
-    root.style.setProperty('--purple-50', tint(accent, 0.94));
-    root.style.setProperty('--purple-100', tint(accent, 0.88));
-    root.style.setProperty('--purple-200', tint(accent, 0.78));
-    root.style.setProperty('--purple-700', shade(accent, -0.32));
-
-    if (tweaks.density === 'compact') {
-      root.style.setProperty('--r-card', '10px');
-    } else {
-      root.style.setProperty('--r-card', '12px');
-    }
-    root.style.setProperty('--border', tweaks.borderStyle === 'soft' ? 'rgba(17,17,20,0.12)' : 'rgba(17,17,20,0.08)');
-  }, [tweaks.accent, tweaks.density, tweaks.borderStyle]);
+    let cancelled = false;
+    const warmTimer = setTimeout(() => { if (!cancelled) setWarming(true); }, 3000);
+    fetch(`${API_BASE_FALLBACK}/api/health`)
+      .catch(() => {})
+      .finally(() => {
+        if (cancelled) return;
+        clearTimeout(warmTimer);
+        setWarming(false);
+      });
+    return () => { cancelled = true; clearTimeout(warmTimer); };
+  }, []);
 
   return (
     <div className="app">
       <Nav route={route} onRoute={goto} />
+      {warming && <ColdStartBanner />}
       {route === 'landing' && <Landing onRoute={goto} />}
       {route === 'match' && <MatchPage />}
       {route === 'add' && <AddDataPage />}
-
-      <TweaksPanel title="Tweaks">
-        <TweakSection label="Brand">
-          <TweakColor
-            label="Accent"
-            value={tweaks.accent}
-            onChange={(v) => setTweak('accent', v)}
-            options={ACCENT_OPTIONS}
-          />
-        </TweakSection>
-        <TweakSection label="Layout">
-          <TweakRadio
-            label="Density"
-            value={tweaks.density}
-            onChange={(v) => setTweak('density', v)}
-            options={[{value:'comfortable', label:'Comfortable'}, {value:'compact', label:'Compact'}]}
-          />
-          <TweakRadio
-            label="Border weight"
-            value={tweaks.borderStyle}
-            onChange={(v) => setTweak('borderStyle', v)}
-            options={[{value:'hairline', label:'Hairline'}, {value:'soft', label:'Soft'}]}
-          />
-        </TweakSection>
-        <TweakSection label="Result cards">
-          <TweakToggle
-            label="Show feedback buttons"
-            value={tweaks.showFeedback}
-            onChange={(v) => setTweak('showFeedback', v)}
-          />
-        </TweakSection>
-      </TweaksPanel>
-
-      {!tweaks.showFeedback && <style>{`.feedback { display: none !important; }`}</style>}
     </div>
   );
 }
 
-// Color helpers — hex shading/tinting
-function hexToRgb(hex) {
-  const h = hex.replace('#','');
-  const v = h.length === 3 ? h.split('').map(c=>c+c).join('') : h;
-  return [parseInt(v.slice(0,2),16), parseInt(v.slice(2,4),16), parseInt(v.slice(4,6),16)];
-}
-function rgbToHex([r,g,b]) {
-  return '#' + [r,g,b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2,'0')).join('');
-}
-function shade(hex, amount) {
-  const [r,g,b] = hexToRgb(hex);
-  const f = 1 + amount;
-  return rgbToHex([r*f, g*f, b*f]);
-}
-function tint(hex, t) {
-  const [r,g,b] = hexToRgb(hex);
-  return rgbToHex([r + (255-r)*t, g + (255-g)*t, b + (255-b)*t]);
+function ColdStartBanner() {
+  return (
+    <div style={{
+      padding: '10px 16px',
+      background: 'var(--purple-50)',
+      borderBottom: '0.5px solid var(--border)',
+      fontSize: 12,
+      color: 'var(--purple-700)',
+      textAlign: 'center',
+    }}>
+      ⏳ Warming up the embedding models on the backend — first request after sleep
+      takes about a minute. Hang tight…
+    </div>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
