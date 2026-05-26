@@ -1,0 +1,4 @@
+# uv project configuration
+# override-dependencies replaces the heavy CUDA torch with the already-installed
+# system version, avoiding a ~2 GB re-download on a disk-constrained machine.
+# Docker builds are unaffected — they install fresh from pyproject.toml.

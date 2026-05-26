@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+*.env
+!.env.example
+
+# Node / build artifacts
+node_modules/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# HF / ML caches
+.cache/
+*.bin
+*.safetensors
+
+# Large local datasets (not committed; downloaded via migration scripts)
+samples/*.csv
+
+# Claude Code local config (contains MCP access tokens)
+.claude/
