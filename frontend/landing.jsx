@@ -12,7 +12,6 @@ function Nav({ route, onRoute }) {
           <a className={`nav-link ${route==='match'?'active':''}`} href="#/match" onClick={(e)=>{e.preventDefault(); onRoute('match');}}>Match</a>
           <a className={`nav-link ${route==='add'?'active':''}`} href="#/add" onClick={(e)=>{e.preventDefault(); onRoute('add');}}>Add data</a>
           <a className="nav-link" href="#how" onClick={(e)=>{e.preventDefault(); onRoute('landing'); setTimeout(()=>document.getElementById('how')?.scrollIntoView({behavior:'smooth', block:'start'}), 10);}}>How it works</a>
-          <a className={`nav-link ${route==='eval'?'active':''}`} href="#/eval" onClick={(e)=>{e.preventDefault(); onRoute('eval');}}>Evaluation</a>
         </nav>
         <div className="nav-right">
           <button className="btn btn-primary" onClick={()=>onRoute('match')}>Get started</button>

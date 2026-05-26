@@ -31,6 +31,17 @@ async function apiMatch(endpoint, body) {
   return res.json();
 }
 
+async function apiFeedback(evalId, resultId, action) {
+  // Best-effort: silently swallow errors so a feedback failure never breaks the UI.
+  try {
+    await fetch(`${API_BASE}/api/eval/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eval_id: evalId, result_id: resultId, action }),
+    });
+  } catch (_) {}
+}
+
 // ── Result normalisers ────────────────────────────────────────────────────────
 
 function normalizeJob(r) {
@@ -153,7 +164,7 @@ function SkeletonCard() {
   );
 }
 
-function ResultCard({ item, mode }) {
+function ResultCard({ item, mode, feedback, onFeedback }) {
   const isResume = mode === 'j2r';
 
   return (
@@ -198,6 +209,10 @@ function ResultCard({ item, mode }) {
         {item.matched.map(s => <Pill key={s}>{s}</Pill>)}
         {item.missing.map(s => <Pill key={s} miss>{s}</Pill>)}
       </div>
+
+      <div className="result-foot" style={{display:'flex', justifyContent:'flex-end', marginTop: 10}}>
+        <Feedback value={feedback} onChange={onFeedback} />
+      </div>
     </div>
   );
 }
@@ -229,7 +244,7 @@ function EmptyState({ mode, error }) {
   );
 }
 
-function ResultsPanel({ loading, results, error, mode, elapsed, onRerun }) {
+function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId }) {
   return (
     <section className="panel" data-screen-label="Results">
       <div className="results-head">
@@ -259,7 +274,16 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun }) {
           </div>
         )}
         {!loading && results && results.map(item => (
-          <ResultCard key={item.id} item={item} mode={mode} />
+          <ResultCard
+            key={item.id}
+            item={item}
+            mode={mode}
+            feedback={feedback[item.id]}
+            onFeedback={(v) => {
+              setFeedback(prev => ({ ...prev, [item.id]: v }));
+              if (evalId && v) apiFeedback(evalId, item.id, v);
+            }}
+          />
         ))}
       </div>
     </section>
@@ -434,12 +458,16 @@ function MatchPage() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [elapsed, setElapsed] = React.useState(null);
+  const [evalId, setEvalId] = React.useState(null);
+  const [feedback, setFeedback] = React.useState({});
 
   // Reset when switching tabs
   React.useEffect(() => {
     setResults(null);
     setError(null);
     setElapsed(null);
+    setEvalId(null);
+    setFeedback({});
     if (mode === 'r2j') setText(SAMPLE_RESUME);
     if (mode === 'j2r') setText(SAMPLE_JD);
   }, [mode]);
@@ -451,6 +479,8 @@ function MatchPage() {
     setLoading(true);
     setResults(null);
     setError(null);
+    setEvalId(null);
+    setFeedback({});
 
     try {
       const endpoint = mode === 'r2j' ? 'resume-jobs' : 'job-resumes';
@@ -464,6 +494,7 @@ function MatchPage() {
       const normalize = mode === 'r2j' ? normalizeJob : normalizeResume;
       setResults((data.results || []).map(normalize));
       setElapsed(data.elapsed_ms);
+      setEvalId(data.eval_id || null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -497,6 +528,8 @@ function MatchPage() {
             loading={loading} results={results} error={error}
             mode={mode} elapsed={elapsed}
             onRerun={submit}
+            feedback={feedback} setFeedback={setFeedback}
+            evalId={evalId}
           />
         </div>
       ) : (

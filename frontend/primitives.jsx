@@ -1,4 +1,4 @@
-// Shared primitives: icons, Logo, Nav, ScoreBar, ScoreBadge, Pill
+// Shared primitives: icons, Logo, Nav, ScoreBar, ScoreBadge, Pill, Feedback
 
 const Icon = {
   Sparkle: (p) => (
@@ -149,4 +149,25 @@ function Pill({ children, miss }) {
   return <span className={`pill ${miss ? 'miss' : 'match'}`}>{children}</span>;
 }
 
-Object.assign(window, { Icon, Logo, tierFor, labelFor, ScoreBar, ScoreBadge, Pill });
+function Feedback({ value, onChange }) {
+  return (
+    <div className="feedback">
+      <button
+        className={`fb-btn up ${value === 'up' ? 'active' : ''}`}
+        title="Good match"
+        onClick={() => onChange(value === 'up' ? null : 'up')}
+      >
+        <Icon.ThumbUp filled={value === 'up'} />
+      </button>
+      <button
+        className={`fb-btn down ${value === 'down' ? 'active' : ''}`}
+        title="Bad match"
+        onClick={() => onChange(value === 'down' ? null : 'down')}
+      >
+        <Icon.ThumbDown filled={value === 'down'} />
+      </button>
+    </div>
+  );
+}
+
+Object.assign(window, { Icon, Logo, tierFor, labelFor, ScoreBar, ScoreBadge, Pill, Feedback });

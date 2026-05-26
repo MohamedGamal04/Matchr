@@ -19,7 +19,6 @@ function App() {
   const parseRoute = () => {
     const h = (window.location.hash || '#/').replace(/^#/, '');
     if (h.startsWith('/match')) return 'match';
-    if (h.startsWith('/eval')) return 'eval';
     if (h.startsWith('/add')) return 'add';
     return 'landing';
   };
@@ -62,7 +61,6 @@ function App() {
       <Nav route={route} onRoute={goto} />
       {route === 'landing' && <Landing onRoute={goto} />}
       {route === 'match' && <MatchPage />}
-      {route === 'eval' && <EvalPage />}
       {route === 'add' && <AddDataPage />}
 
       <TweaksPanel title="Tweaks">

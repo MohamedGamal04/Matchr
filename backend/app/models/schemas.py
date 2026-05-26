@@ -67,18 +67,6 @@ class FeedbackRequest(BaseModel):
 
 class FeedbackResponse(BaseModel):
     status: str
-    metrics: dict
-
-
-class EvalSummary(BaseModel):
-    model_name: str
-    reranked: bool
-    query_type: str
-    total_queries: int
-    avg_ndcg5: float
-    avg_mrr: float
-    avg_p5: float
-    avg_latency_ms: int
 
 
 # ── Ingest schemas ────────────────────────────────────────────────────────────

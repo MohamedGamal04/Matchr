@@ -35,6 +35,9 @@ create table if not exists jobs (
 );
 
 -- ── Evaluations table ─────────────────────────────────────────────────────────
+-- Query log for every match request. IR-relevance metrics were dropped:
+-- we collect raw feedback signals in `user_feedback` for later analysis,
+-- but don't aggregate them into NDCG/MRR/P@5 columns or a summary view.
 create table if not exists evaluations (
   id               uuid primary key default gen_random_uuid(),
   query_text       text not null,
@@ -45,9 +48,6 @@ create table if not exists evaluations (
   similarity_scores float[],
   rerank_scores    float[],
   user_feedback    jsonb default '{}', -- {result_id: "up"|"down"|"clicked"}
-  ndcg_at_5        float,
-  mrr              float,
-  precision_at_5   float,
   latency_ms       int,
   created_at       timestamptz default now()
 );
@@ -132,18 +132,3 @@ create or replace view resume_category_counts as
   from resumes
   group by category
   order by total desc;
-
--- Aggregated evaluation dashboard — queried by GET /api/eval/summary
-create or replace view eval_summary as
-  select
-    model_name,
-    reranked,
-    query_type,
-    count(*)                                as total_queries,
-    round(avg(ndcg_at_5)::numeric, 3)       as avg_ndcg5,
-    round(avg(mrr)::numeric, 3)             as avg_mrr,
-    round(avg(precision_at_5)::numeric, 3)  as avg_p5,
-    round(avg(latency_ms))                  as avg_latency_ms
-  from evaluations
-  where ndcg_at_5 is not null
-  group by model_name, reranked, query_type;
