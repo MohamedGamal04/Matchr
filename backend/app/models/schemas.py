@@ -48,14 +48,6 @@ class ResumeResult(BaseModel):
     source: str = ""
 
 
-class MatchResponse(BaseModel):
-    results: list[JobResult] | list[ResumeResult]
-    model_used: str
-    reranked: bool
-    elapsed_ms: int
-    eval_id: Optional[str] = None
-
-
 class OneToOneRequest(BaseModel):
     job_text: str = Field(..., min_length=10)
     resume_text: str = Field(..., min_length=10)

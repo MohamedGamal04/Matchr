@@ -14,7 +14,6 @@ SUPABASE_URL / SUPABASE_KEY are read from backend/.env (same as migrate_resumes.
 
 from __future__ import annotations
 
-import ast
 import csv
 import os
 import re

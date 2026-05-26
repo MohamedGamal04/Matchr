@@ -199,7 +199,7 @@ def scrape_and_upsert(
             rows = [{**r, "embedding": e} for r, e in zip(batch, embeddings)]
             supabase.table("jobs").upsert(rows, on_conflict="source_id").execute()
             inserted += len(batch)
-        except Exception as exc:
+        except Exception:
             logger.exception("Supabase upsert batch failed")
             errors += 1
 
