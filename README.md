@@ -204,17 +204,6 @@ sleep waits while the container restarts. The frontend shows a "Backend is
 warming up" banner. Either accept the cold start, upgrade to "Always-on",
 or hit `/api/health` periodically from an external cron.
 
-## What's intentionally **not** in this repo
-
-- An IR-metrics dashboard (NDCG/MRR/P@5). The columns and view were dropped
-  in commit `c2ffddd` — we collect raw feedback signals but no aggregate
-  scoring. The Evaluation page was deleted with them.
-- Multi-model selection. Started with four bi-encoders; converged on BGE.
-- Sign-in / auth. The Match endpoints are open; `/api/ingest/*` and
-  `/api/scrape/*` are gated by an `X-API-Key` header (filter-only auth — the
-  key sits in the browser, so anyone with DevTools can read it; it's a
-  friction barrier, not real auth).
-
 ## License
 
 MIT.
