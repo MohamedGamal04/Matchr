@@ -9,5 +9,5 @@
 // with DevTools can read it. It's a friction barrier against casual abuse,
 // not real auth.
 
-window.MATCHR_API     = 'http://localhost:8000';
-window.MATCHR_API_KEY = null;
+window.MATCHR_API     = 'https://mohamedgamal04-matchr.hf.space';
+window.MATCHR_API_KEY = '878000d2d77aac1187581ae463df00b5e9a7dac1f242de1708af5cfa76d14d77';
