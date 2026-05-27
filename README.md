@@ -5,9 +5,9 @@ pgvector, a cross-encoder reranker, and live job ingest from Indeed via
 [JobSpy](https://github.com/Bunsly/JobSpy). FastAPI on the backend, a
 vanilla React + Babel single-page app on the frontend, Supabase for storage.
 
-> **Status.** Local dev works end-to-end. Production deploy targets: backend on
-> Hugging Face Spaces (Docker), frontend on Vercel (static). See the
-> [deployment notes](#deployment) below.
+> **🚀 Live demo:** **https://matchr-sand.vercel.app**
+> Backend: [`mohamedgamal04-matchr.hf.space`](https://mohamedgamal04-matchr.hf.space) (Hugging Face Spaces)
+> First request after idle waits ~10 s for the Space to wake.
 
 ## Architecture
 
@@ -118,8 +118,9 @@ python -m http.server 5500
 # Open http://localhost:5500
 ```
 
-`API_BASE` in [frontend/match.jsx](frontend/match.jsx) defaults to
-`http://localhost:8000` — change once before deploying.
+Frontend config lives in [frontend/config.js](frontend/config.js) — set
+`window.MATCHR_API` to your backend URL and `window.MATCHR_API_KEY` to the
+value of the backend's `API_KEY` env var (or leave `null` for open access).
 
 ## Endpoints (key ones)
 
@@ -175,19 +176,33 @@ scraper for it works only with paid residential proxies.
 
 ## Deployment
 
-**Backend → Hugging Face Spaces (Docker).** The `backend/Dockerfile` already
-bakes both models at build time so cold start is ~30 s instead of minutes.
-Set repository secrets in the Space:
+This repo is already deployed:
 
-- `SUPABASE_URL`, `SUPABASE_KEY`, `HF_TOKEN`
-- `CORS_ORIGINS` — the deployed frontend URL (no trailing slash)
+- **Backend:** [`mohamedgamal04-matchr.hf.space`](https://mohamedgamal04-matchr.hf.space) — Hugging Face Space, Docker SDK, CPU Basic (free).
+- **Frontend:** [`matchr-sand.vercel.app`](https://matchr-sand.vercel.app) — Vercel, static (no build step), root directory set to `frontend/`.
 
-**Frontend → Vercel (static).** No build step needed — Vercel serves
-`frontend/` as static files. Point `API_BASE` at the HF Space URL before deploy.
+To redeploy your own copy:
+
+**Backend → Hugging Face Spaces (Docker).** The `backend/Dockerfile` bakes
+both models at build time so cold start is ~10 s instead of minutes. Push
+the contents of `backend/` to a new Docker Space and set these as **secrets**
+in the Space settings:
+
+- `SUPABASE_URL`, `SUPABASE_KEY` (service-role key)
+- `API_KEY` — random string; gates `/api/ingest/*` and `/api/scrape/*`
+- `CORS_ORIGINS` — your deployed frontend URL, no trailing slash
+- `HF_TOKEN` — optional, only needed if you swap in a gated model
+
+**Frontend → Vercel (static).** Import the repo, set **Root Directory** to
+`frontend`, **Framework Preset** to "Other", leave Build/Output commands
+empty. Before pushing, edit [`frontend/config.js`](frontend/config.js) so
+`MATCHR_API` points at the HF Space and `MATCHR_API_KEY` matches the backend's
+`API_KEY` secret.
 
 The free HF Spaces tier hibernates after ~48 h idle; the first request after
-sleep waits while the model reloads. Either accept the cold start, upgrade
-to "Always-on", or hit `/api/health` periodically from an external cron.
+sleep waits while the container restarts. The frontend shows a "Backend is
+warming up" banner. Either accept the cold start, upgrade to "Always-on",
+or hit `/api/health` periodically from an external cron.
 
 ## What's intentionally **not** in this repo
 
@@ -195,8 +210,10 @@ to "Always-on", or hit `/api/health` periodically from an external cron.
   in commit `c2ffddd` — we collect raw feedback signals but no aggregate
   scoring. The Evaluation page was deleted with them.
 - Multi-model selection. Started with four bi-encoders; converged on BGE.
-- Sign-in / auth. The Add Data and Scrape endpoints are open — gate them
-  with an `X-API-Key` if you deploy publicly.
+- Sign-in / auth. The Match endpoints are open; `/api/ingest/*` and
+  `/api/scrape/*` are gated by an `X-API-Key` header (filter-only auth — the
+  key sits in the browser, so anyone with DevTools can read it; it's a
+  friction barrier, not real auth).
 
 ## License
 
