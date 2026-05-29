@@ -134,3 +134,48 @@ create or replace view resume_category_counts as
   from resumes
   group by category
   order by total desc;
+
+
+-- ── Section-aware retrieval ───────────────────────────────────────────────────
+
+create table if not exists resume_sections (
+  id           uuid primary key default gen_random_uuid(),
+  resume_id    uuid not null references resumes(id) on delete cascade,
+  section_type text not null check (section_type in ('experience','skills','education','summary','other')),
+  content      text not null,
+  embedding    vector(1024),
+  created_at   timestamptz default now(),
+  unique (resume_id, section_type)
+);
+
+create index if not exists resume_sections_resume_id_idx
+  on resume_sections (resume_id);
+
+create index if not exists resume_sections_embedding_idx
+  on resume_sections using hnsw (embedding vector_cosine_ops)
+  with (m = 16, ef_construction = 64);
+
+create or replace function match_resumes_sectioned(
+  query_embedding vector(1024),
+  match_count     int default 50
+)
+returns table (
+  resume_id    uuid,
+  category     text,
+  preview      text,
+  similarity   float,
+  best_section text
+)
+language sql stable as $$
+  select
+    r.id as resume_id,
+    r.category,
+    r.preview,
+    max(1 - (s.embedding <=> query_embedding)) as similarity,
+    (array_agg(s.section_type order by (s.embedding <=> query_embedding) asc))[1] as best_section
+  from resume_sections s
+  join resumes r on r.id = s.resume_id
+  group by r.id, r.category, r.preview
+  order by similarity desc
+  limit match_count;
+$$;
