@@ -179,3 +179,28 @@ language sql stable as $$
   order by similarity desc
   limit match_count;
 $$;
+
+
+-- ── Feedback metrics view ─────────────────────────────────────────────────────
+
+create or replace view feedback_metrics as
+select
+  date_trunc('day', e.created_at)       as day,
+  e.query_type,
+  e.model_name,
+  e.reranked,
+  count(*)                              as total_queries,
+  avg(e.latency_ms)                     as avg_latency_ms,
+  sum(coalesce(fb.up_count,    0))      as thumbs_up,
+  sum(coalesce(fb.down_count,  0))      as thumbs_down,
+  sum(coalesce(fb.click_count, 0))      as clicks
+from evaluations e
+left join lateral (
+  select
+    count(*) filter (where val = 'up')      as up_count,
+    count(*) filter (where val = 'down')    as down_count,
+    count(*) filter (where val = 'clicked') as click_count
+  from jsonb_each_text(e.user_feedback) as kv(k, val)
+) fb on true
+group by 1, 2, 3, 4
+order by 1 desc;
