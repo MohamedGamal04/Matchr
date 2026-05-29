@@ -46,7 +46,7 @@ from supabase import create_client
 MODEL_NAME  = "BAAI/bge-large-en-v1.5"
 BATCH_SIZE  = 32
 MAX_CHARS   = 4000
-PER_TITLE   = 20
+PER_TITLE   = 10
 CSV_PATH    = _root / "samples" / "JOB_data_sample.csv"
 
 # ── Clients ──────────────────────────────────────────────────────────────────
