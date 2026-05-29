@@ -122,6 +122,40 @@ def jobspy_mock(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def nlp_mock(monkeypatch):
+    """
+    Patch get_nlp() everywhere to return a fake NLP that produces no entities.
+    Word-boundary regex in extract_skills still runs — tests rely on that.
+    The NER branch is tested separately in test_preprocessor.py.
+    """
+    from unittest.mock import MagicMock
+
+    class _FakeEnt:
+        def __init__(self, text, label):
+            self.text = text
+            self.label_ = label
+
+    class _FakeDoc:
+        def __init__(self, text):
+            self._text = text
+            self.ents = []
+            # Minimal sentence splitting on ". " for explain tests
+            raw_sents = [s.strip() for s in text.split(". ") if s.strip()]
+            self.sents = [type("Sent", (), {"text": s})() for s in raw_sents]
+
+    fake_nlp = MagicMock(side_effect=lambda text: _FakeDoc(text))
+
+    for path in [
+        "app.services.preprocessor.get_nlp",
+        "app.routes.explain.get_nlp",
+    ]:
+        try:
+            monkeypatch.setattr(path, lambda _fn=fake_nlp: _fn)
+        except (AttributeError, ImportError):
+            pass  # explain.py not yet created — skip
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """Clear rate-limit state between tests so we never hit 429 from a neighbour."""
     from app.services.limiter import limiter
