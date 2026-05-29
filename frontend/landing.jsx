@@ -11,6 +11,7 @@ function Nav({ route, onRoute }) {
         <nav className="nav-links">
           <a className={`nav-link ${route==='match'?'active':''}`} href="#/match" onClick={(e)=>{e.preventDefault(); onRoute('match');}}>Match</a>
           <a className={`nav-link ${route==='add'?'active':''}`} href="#/add" onClick={(e)=>{e.preventDefault(); onRoute('add');}}>Add data</a>
+          <a className={`nav-link ${route==='metrics'?'active':''}`} href="#/metrics" onClick={(e)=>{e.preventDefault(); onRoute('metrics');}}>Metrics</a>
           <a className="nav-link" href="#how" onClick={(e)=>{e.preventDefault(); onRoute('landing'); setTimeout(()=>document.getElementById('how')?.scrollIntoView({behavior:'smooth', block:'start'}), 10);}}>How it works</a>
         </nav>
         <div className="nav-right">

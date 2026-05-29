@@ -10,6 +10,7 @@ function App() {
     const h = (window.location.hash || '#/').replace(/^#/, '');
     if (h.startsWith('/match')) return 'match';
     if (h.startsWith('/add')) return 'add';
+    if (h.startsWith('/metrics')) return 'metrics';
     return 'landing';
   };
   const [route, setRoute] = React.useState(parseRoute);
@@ -47,6 +48,7 @@ function App() {
       {route === 'landing' && <Landing onRoute={goto} />}
       {route === 'match' && <MatchPage />}
       {route === 'add' && <AddDataPage />}
+      {route === 'metrics' && <MetricsPage />}
     </div>
   );
 }
