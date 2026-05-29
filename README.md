@@ -5,6 +5,11 @@ pgvector, a cross-encoder reranker, and live job ingest from Indeed via
 [JobSpy](https://github.com/Bunsly/JobSpy). FastAPI on the backend, a
 vanilla React + Babel single-page app on the frontend, Supabase for storage.
 
+Beyond plain similarity, Matchr adds spaCy-NER-driven skill extraction,
+section-aware retrieval (match against a resume's experience/skills/education
+separately), a per-match **explainability** endpoint (top matching sentences +
+skill gap), and a **metrics dashboard** that aggregates feedback signals.
+
 > **🚀 Live demo:** **https://matchr-sand.vercel.app**
 > Backend: [`mohamedgamal04-matchr.hf.space`](https://mohamedgamal04-matchr.hf.space) (Hugging Face Spaces)
 > First request after idle waits ~10 s for the Space to wake.
@@ -23,7 +28,8 @@ vanilla React + Babel single-page app on the frontend, Supabase for storage.
 │                                                                      │
 │  /api/health       → liveness + model load status                    │
 │  /api/match/...    → resume↔job similarity (bi-encoder + reranker)   │
-│  /api/eval/...     → feedback signals (no IR metrics aggregated)     │
+│  /api/explain/...  → per-match top sentences + skill gap             │
+│  /api/eval/...     → feedback signals + aggregated metrics view      │
 │  /api/ingest/...   → user-submitted resume / job                     │
 │  /api/scrape/...   → live Indeed scrape via JobSpy                   │
 └──────────────────────────────────────────────────────────────────────┘
@@ -38,7 +44,9 @@ vanilla React + Babel single-page app on the frontend, Supabase for storage.
 
 Embeddings are 1024-dim BGE vectors. Retrieval uses HNSW ANN search on
 `vector_cosine_ops`. Top-50 candidates are then reranked with a small
-cross-encoder before being cut to `top_k`.
+cross-encoder before being cut to `top_k`. With `section_aware: true`, retrieval
+runs against per-section resume embeddings (`resume_sections`) and returns the
+best-matching section per result instead of a whole-document score.
 
 ## Repository layout
 
@@ -51,19 +59,23 @@ backend/        FastAPI app, uv-managed Python env, Dockerfile
     routes/
       health.py        /api/health
       match.py         /api/match/{resume-jobs,job-resumes,one-to-one}
-      eval.py          /api/eval/{feedback,recent}
+      explain.py       /api/explain/match  (top sentences + skill gap)
+      eval.py          /api/eval/{feedback,recent,metrics}
       data.py          /api/ingest/{resume,job}
       scrape.py        /api/scrape/jobs-for-query
     services/
       embedder.py      bi-encoder + cross-encoder (lru_cache)
-      preprocessor.py  text cleaning, PII strip, skill extraction
+      preprocessor.py  text cleaning, PII strip, spaCy-NER skill extraction
+      section_parser.py  splits resume text into experience/skills/education/…
+      nlp_client.py    shared spaCy model loader (lru_cache)
       scraper.py       JobSpy → embed → upsert helper
       supabase_client.py
 frontend/       Single-page React app, no build step (Babel in-browser)
   index.html         entry point
   app.jsx            hash routing + Tweaks panel
   landing.jsx        marketing page + Nav
-  match.jsx          the actual product surface
+  match.jsx          the actual product surface (incl. Explain panel)
+  metrics.jsx        #/metrics dashboard — daily feedback aggregation
   add-data.jsx       user-submitted resume / job ingest
   primitives.jsx     icons, Logo, ScoreBar, Pill, Feedback
   data.jsx           sample resume + sample JD
@@ -87,6 +99,10 @@ prototype/      Original Streamlit + pickle version (archived)
 - **uv** for the Python env. `pyproject.toml` + lockfile in `backend/`.
 - **No frontend build step.** Babel transpiles JSX in the browser. Fine for a
   portfolio demo; if this ever needs to be production-fast, swap to esbuild.
+- **spaCy NER for skills.** `en_core_web_sm` (baked into the image) plus a
+  curated alias map + word-boundary regex. Resolves variants like `k8s →
+  kubernetes`, `golang → go` independently of NER, and avoids false positives
+  on common words.
 
 ## Quick start (local)
 
@@ -129,10 +145,15 @@ value of the backend's `API_KEY` env var (or leave `null` for open access).
 | `POST` | `/api/match/resume-jobs` | Resume → ranked jobs. Supports `sources` filter (pill IDs) and `rerank` toggle. |
 | `POST` | `/api/match/job-resumes` | Job → ranked resumes. |
 | `POST` | `/api/match/one-to-one` | Single-pair similarity + skill overlap. |
-| `POST` | `/api/eval/feedback` | Records `{result_id: up/down/clicked}` into the row's `user_feedback` JSONB. No IR metrics computed. |
+| `POST` | `/api/explain/match` | Why a result matched: top cross-encoder-scored sentences, skill gap, per-section scores. |
+| `POST` | `/api/eval/feedback` | Records `{result_id: up/down/clicked}` into the row's `user_feedback` JSONB. |
+| `GET`  | `/api/eval/metrics` | Aggregated daily metrics from the `feedback_metrics` view (query counts, latency, up/down/click totals). |
 | `POST` | `/api/ingest/resume` | Add a resume — embeds, sanitises preview, inserts. |
 | `POST` | `/api/ingest/job` | Add a job posting — embeds, inserts. |
 | `POST` | `/api/scrape/jobs-for-query` | Live Indeed scrape via JobSpy. Inputs: `text` (auto-extracts a job title from it), optional `search_term`, `country`, `location`. |
+
+`/api/match/*` also accepts `section_aware: true` to retrieve against per-section
+resume embeddings and return a `best_section` per result.
 
 OpenAPI / Swagger UI at `http://localhost:8000/docs`.
 
@@ -149,18 +170,29 @@ OpenAPI / Swagger UI at `http://localhost:8000/docs`.
   Country dropdown (USA/UK/Egypt/…) + optional search override.
 - **Add data page** (`#/add`) — submit a single resume or job posting
   with category/title metadata.
+- **Explain panel** — an "Explain this match" expander on each result card
+  calls `/api/explain/match` and shows the top matching sentences, the skill
+  gap, and per-section scores. Opening it also records a `clicked` signal.
+- **Metrics dashboard** (`#/metrics`) — daily summary cards + table from the
+  `feedback_metrics` view: query counts, average latency, thumbs up/down/clicks.
 - **Feedback** — thumbs up/down on each result card; signal lands in the
   `evaluations.user_feedback` JSONB column.
 
 ## Database schema
 
-`supabase/schema.sql` is the source of truth. Three tables:
+`supabase/schema.sql` is the source of truth. Tables:
 
 - `resumes(id, source, source_id, category, preview, full_text, embedding vector(1024), created_at)`
 - `jobs(id, source, source_id, title, company, salary, experience, work_type, skills text[], full_text, job_url, company_url, embedding vector(1024), created_at)`
 - `evaluations(id, query_text, query_type, model_name, reranked, result_ids uuid[], similarity_scores float[], rerank_scores float[], user_feedback jsonb, latency_ms, created_at)`
+- `resume_sections(id, resume_id → resumes, section_type, content, embedding vector(1024), created_at)` — one row per parsed section, used for section-aware retrieval.
 
-Two RPC functions: `match_resumes(query_embedding, match_count, filter_category)` and `match_jobs(query_embedding, match_count)`.
+RPC functions: `match_resumes(query_embedding, match_count, filter_category)`,
+`match_jobs(query_embedding, match_count)`, and
+`match_resumes_sectioned(query_embedding, match_count)` (returns `best_section`).
+
+View: `feedback_metrics` — daily aggregation of query counts, latency, and
+up/down/click feedback totals, backing `GET /api/eval/metrics`.
 
 `full_text` is never returned through the API — only `preview` (sanitised).
 
@@ -184,12 +216,24 @@ This repo is already deployed:
 To redeploy your own copy:
 
 **Backend → Hugging Face Spaces (Docker).** The `backend/Dockerfile` bakes
-both models at build time so cold start is ~10 s instead of minutes. Push
-the contents of `backend/` to a new Docker Space and set these as **secrets**
-in the Space settings:
+both models and the spaCy `en_core_web_sm` model at build time so cold start is
+~10 s instead of minutes. The Space is **backend-only** — HF expects the
+`Dockerfile` and a frontmatter `README.md` at its repo root, so deploy the
+`backend/` subtree (not the monorepo root):
+
+```bash
+git remote add hf https://huggingface.co/spaces/<user>/<space>   # one-time
+git subtree split --prefix=backend -b hf-deploy                  # backend/ → root
+git push hf hf-deploy:main --force
+```
+
+`backend/README.md` carries the required HF YAML frontmatter (`sdk: docker`,
+`app_port: 7860`). Set these in the Space settings — `SUPABASE_KEY` and
+`API_KEY` as **secrets**, the rest as **variables**:
 
 - `SUPABASE_URL`, `SUPABASE_KEY` (service-role key)
-- `API_KEY` — random string; gates `/api/ingest/*` and `/api/scrape/*`
+- `API_KEY` — random string; gates `/api/ingest/*` and `/api/scrape/*`, and must
+  match the frontend's `MATCHR_API_KEY`
 - `CORS_ORIGINS` — your deployed frontend URL, no trailing slash
 - `HF_TOKEN` — optional, only needed if you swap in a gated model
 
