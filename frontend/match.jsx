@@ -878,6 +878,7 @@ function MatchPage() {
       setExplainState(prev => { const next = {...prev}; delete next[resultId]; return next; });
       return;
     }
+    if (evalId) apiFeedback(evalId, resultId, 'clicked');
     const queryText = file?.content || text;
     setExplainState(prev => ({...prev, [resultId]: {loading: true, data: null, error: null}}));
     try {
