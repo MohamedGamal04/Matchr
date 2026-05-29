@@ -55,13 +55,17 @@ from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
 from supabase import create_client
 
+# ── section_parser (backend service) ─────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from app.services.section_parser import parse_sections
+
 # ── Config ───────────────────────────────────────────────────────────────────
 
 MODEL_NAME    = "BAAI/bge-large-en-v1.5"
 BATCH_SIZE    = 32
 MAX_CHARS     = 4000    # max chars of full_text stored
 PREVIEW_CHARS = 250     # snippet shown in UI (PII-stripped)
-PER_CATEGORY  = 20      # sample cap — keeps the demo DB small
+PER_CATEGORY  = 10      # sample cap — keeps the demo DB small
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 
@@ -184,3 +188,49 @@ print(f"\n=== Migration complete ===")
 print(f"  Inserted : {inserted}")
 print(f"  Failed   : {len(all_records) - inserted}")
 print(f"  Errors   : {errors}   (batches that failed)")
+
+# ── Embed and upsert resume sections ─────────────────────────────────────────
+print("\n=== Embedding resume sections ===")
+offset = 0
+PAGE = 200
+section_inserted = 0
+section_errors = 0
+
+while True:
+    res = (
+        supabase.table("resumes")
+        .select("id, full_text")
+        .range(offset, offset + PAGE - 1)
+        .execute()
+    )
+    rows = res.data or []
+    if not rows:
+        break
+
+    for row in rows:
+        resume_id = row["id"]
+        full_text = row.get("full_text") or ""
+        sections = parse_sections(full_text)
+        for section_type, content in sections.items():
+            if not content.strip():
+                continue
+            try:
+                emb = model.encode(content, normalize_embeddings=True).tolist()
+                supabase.table("resume_sections").upsert(
+                    {
+                        "resume_id":    resume_id,
+                        "section_type": section_type,
+                        "content":      content[:4000],
+                        "embedding":    emb,
+                    },
+                    on_conflict="resume_id,section_type",
+                ).execute()
+                section_inserted += 1
+            except Exception as exc:
+                section_errors += 1
+                print(f"  Section error for resume {resume_id}/{section_type}: {exc}")
+
+    offset += PAGE
+    print(f"  Processed {offset} resumes ({section_inserted} sections inserted)")
+
+print(f"\nSection migration complete: {section_inserted} sections, {section_errors} errors")
