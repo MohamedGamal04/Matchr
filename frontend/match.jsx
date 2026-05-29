@@ -49,6 +49,19 @@ async function apiMatch(endpoint, body) {
   return res.json();
 }
 
+async function apiExplain(queryText, resultId, resultType) {
+  const res = await fetch(`${API_BASE}/api/explain/match`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query_text: queryText, result_id: resultId, result_type: resultType }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(formatDetail(err.detail, res.status));
+  }
+  return res.json();
+}
+
 async function apiFeedback(evalId, resultId, action) {
   // Best-effort: silently swallow errors so a feedback failure never breaks the UI.
   try {
@@ -221,8 +234,58 @@ function SkeletonCard() {
   );
 }
 
-function ResultCard({ item, mode, feedback, onFeedback }) {
+function ExplainPanel({ data }) {
+  return (
+    <div style={{fontSize: 12, color: 'var(--ink-700)', paddingBottom: 12}}>
+      {data.matched_spans && data.matched_spans.length > 0 && (
+        <div style={{marginBottom: 12}}>
+          <div style={{fontWeight: 500, marginBottom: 6, color: 'var(--ink-500)', textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.06em'}}>
+            Top matched passages
+          </div>
+          {data.matched_spans.map((span, i) => (
+            <div key={i} style={{background: 'var(--bg-soft)', borderRadius: 6, padding: '8px 10px', marginBottom: 6, border: '0.5px solid var(--border)'}}>
+              <div style={{color: 'var(--purple-700)', marginBottom: 4, fontStyle: 'italic'}}>"{span.query_sentence}"</div>
+              <div style={{color: 'var(--ink-700)'}}>→ "{span.doc_sentence}"</div>
+              <div style={{color: 'var(--ink-400)', marginTop: 4}}>score: {span.score.toFixed(3)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {data.skill_analysis && (
+        <div style={{marginBottom: 12}}>
+          <div style={{fontWeight: 500, marginBottom: 6, color: 'var(--ink-500)', textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.06em'}}>
+            Skill analysis
+          </div>
+          <div className="pills">
+            {(data.skill_analysis.matched || []).map(s => <Pill key={s}>{s}</Pill>)}
+            {(data.skill_analysis.missing || []).map(s => <Pill key={s} miss>{s}</Pill>)}
+          </div>
+        </div>
+      )}
+      {data.section_scores && Object.keys(data.section_scores).length > 0 && (
+        <div>
+          <div style={{fontWeight: 500, marginBottom: 6, color: 'var(--ink-500)', textTransform: 'uppercase', fontSize: 10, letterSpacing: '0.06em'}}>
+            Section scores
+          </div>
+          {Object.entries(data.section_scores).sort((a, b) => b[1] - a[1]).map(([sec, score]) => (
+            <div key={sec} style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4}}>
+              <span style={{width: 90, textTransform: 'capitalize', color: 'var(--ink-500)', fontSize: 11}}>{sec}</span>
+              <div style={{flex: 1, height: 6, background: 'var(--bg-soft)', borderRadius: 3, overflow: 'hidden'}}>
+                <div style={{width: `${(score * 100).toFixed(1)}%`, height: '100%', background: 'var(--purple-400)', borderRadius: 3}}/>
+              </div>
+              <span style={{width: 34, textAlign: 'right', color: 'var(--ink-400)', fontSize: 11}}>{(score * 100).toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultCard({ item, mode, feedback, onFeedback, queryText, explainState, onExplain }) {
   const isResume = mode === 'j2r';
+  const explain = explainState || {};
+  const resultType = isResume ? 'resume' : 'job';
 
   return (
     <div className="result-card">
@@ -296,6 +359,20 @@ function ResultCard({ item, mode, feedback, onFeedback }) {
       <div className="result-foot" style={{display:'flex', justifyContent:'flex-end', marginTop: 10}}>
         <Feedback value={feedback} onChange={onFeedback} />
       </div>
+
+      <div style={{borderTop: '0.5px solid var(--border)', marginTop: 8}}>
+        <button
+          onClick={() => {
+            if (explain.data) { onExplain && onExplain(item.id, resultType, true); }
+            else if (!explain.loading) { onExplain && onExplain(item.id, resultType, false); }
+          }}
+          style={{fontSize: 11, color: 'var(--purple-700)', background: 'none', border: 'none', cursor: explain.loading ? 'default' : 'pointer', padding: '8px 0', display: 'block', width: '100%', textAlign: 'left', opacity: explain.loading ? 0.6 : 1}}
+        >
+          {explain.loading ? '⏳ Loading explanation…' : explain.data ? '▲ Hide explanation' : '▾ Explain this match'}
+        </button>
+        {explain.error && (<div style={{fontSize: 11, color: '#EF4444', paddingBottom: 8}}>{explain.error}</div>)}
+        {explain.data && !explain.loading && (<ExplainPanel data={explain.data} />)}
+      </div>
     </div>
   );
 }
@@ -355,7 +432,7 @@ function sortResults(items, sort) {
   }
 }
 
-function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId, onRefreshFromSources, refreshing, refreshMsg, scrapeSites, toggleScrapeSite, scrapeCountry, setScrapeCountry, searchOverride, setSearchOverride }) {
+function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedback, setFeedback, evalId, onRefreshFromSources, refreshing, refreshMsg, scrapeSites, toggleScrapeSite, scrapeCountry, setScrapeCountry, searchOverride, setSearchOverride, queryText, explainState, onExplain }) {
   const [sort, setSort] = React.useState('score');
   const isResume = mode === 'j2r';
   const sorted = results ? sortResults(results, sort) : null;
@@ -516,6 +593,9 @@ function ResultsPanel({ loading, results, error, mode, elapsed, onRerun, feedbac
               setFeedback(prev => ({ ...prev, [item.id]: v }));
               if (evalId && v) apiFeedback(evalId, item.id, v);
             }}
+            queryText={queryText}
+            explainState={explainState && explainState[item.id]}
+            onExplain={onExplain}
           />
         ))}
       </div>
@@ -698,6 +778,7 @@ function MatchPage() {
   const [scrapeSites, setScrapeSites] = React.useState(ALL_PILL_IDS);
   const [scrapeCountry, setScrapeCountry] = React.useState('USA');
   const [searchOverride, setSearchOverride] = React.useState('');
+  const [explainState, setExplainState] = React.useState({});
   const skipNextSourcesEffect = React.useRef(true);
 
   // Reset when switching tabs
@@ -708,6 +789,7 @@ function MatchPage() {
     setEvalId(null);
     setFeedback({});
     setRefreshMsg(null);
+    setExplainState({});
     if (mode === 'r2j') setText(SAMPLE_RESUME);
     if (mode === 'j2r') setText(SAMPLE_JD);
   }, [mode]);
@@ -791,6 +873,21 @@ function MatchPage() {
     setScrapeSites(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
   };
 
+  const handleExplain = async (resultId, resultType, toggle) => {
+    if (toggle) {
+      setExplainState(prev => { const next = {...prev}; delete next[resultId]; return next; });
+      return;
+    }
+    const queryText = file?.content || text;
+    setExplainState(prev => ({...prev, [resultId]: {loading: true, data: null, error: null}}));
+    try {
+      const data = await apiExplain(queryText, resultId, resultType);
+      setExplainState(prev => ({...prev, [resultId]: {loading: false, data, error: null}}));
+    } catch (e) {
+      setExplainState(prev => ({...prev, [resultId]: {loading: false, data: null, error: e.message}}));
+    }
+  };
+
   // Auto-rerun the match when the user toggles source pills (r2j only).
   // Skip the first render and any tab-switch reset.
   React.useEffect(() => {
@@ -846,6 +943,9 @@ function MatchPage() {
             setScrapeCountry={setScrapeCountry}
             searchOverride={searchOverride}
             setSearchOverride={setSearchOverride}
+            queryText={file?.content || text}
+            explainState={explainState}
+            onExplain={handleExplain}
           />
         </div>
       ) : (
