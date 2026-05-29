@@ -9,7 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
-from app.routes import data, eval, health, match, scrape
+from app.routes import data, eval, explain, health, match, scrape
 from app.services.embedder import preload_models
 from app.services.limiter import limiter
 
@@ -96,11 +96,12 @@ async def log_requests(request: Request, call_next):
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 
-app.include_router(health.router, prefix="/api", tags=["Health"])
-app.include_router(match.router,  prefix="/api/match", tags=["Match"])
-app.include_router(eval.router,   prefix="/api/eval",  tags=["Evaluation"])
-app.include_router(data.router,   prefix="/api/ingest", tags=["Ingest"])
-app.include_router(scrape.router, prefix="/api/scrape", tags=["Scrape"])
+app.include_router(health.router,   prefix="/api",         tags=["Health"])
+app.include_router(match.router,    prefix="/api/match",   tags=["Match"])
+app.include_router(eval.router,     prefix="/api/eval",    tags=["Evaluation"])
+app.include_router(data.router,     prefix="/api/ingest",  tags=["Ingest"])
+app.include_router(scrape.router,   prefix="/api/scrape",  tags=["Scrape"])
+app.include_router(explain.router,  prefix="/api/explain", tags=["Explain"])
 
 
 @app.get("/", tags=["Root"])

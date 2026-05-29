@@ -41,6 +41,10 @@ def embedder_mock(monkeypatch):
     def fake_preload_models():
         return None
 
+    fake_cross = MagicMock()
+    fake_cross.predict.return_value = [0.9, 0.7, 0.5, 0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0,
+                                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
     targets = {
         # Service module itself
         "app.services.embedder.encode_query":            fake_encode_query,
@@ -54,6 +58,9 @@ def embedder_mock(monkeypatch):
         "app.routes.data.encode_document":               fake_encode_document,
         "app.services.scraper.encode_batch_documents":   fake_encode_batch_documents,
         "app.main.preload_models":                       fake_preload_models,
+        # Explain route
+        "app.routes.explain.encode_query":               fake_encode_query,
+        "app.routes.explain.get_crossencoder":           lambda: fake_cross,
     }
     for path, fn in targets.items():
         monkeypatch.setattr(path, fn)
@@ -89,6 +96,7 @@ def supabase_mock(monkeypatch):
         "app.routes.data.get_supabase",
         "app.routes.eval.get_supabase",
         "app.services.scraper.get_supabase",
+        "app.routes.explain.get_supabase",
     ]:
         monkeypatch.setattr(path, lambda _m=mock: _m)
 
