@@ -66,3 +66,18 @@ def get_recent_evals(limit: int = 20):
     except Exception as exc:
         logger.exception("get_recent_evals error")
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/metrics")
+def get_metrics():
+    """
+    Return aggregated query metrics from the feedback_metrics view.
+    Groups by day / query_type / model; includes thumbs up/down/click counts.
+    """
+    try:
+        supabase = get_supabase()
+        res = supabase.table("feedback_metrics").select("*").execute()
+        return {"metrics": res.data or []}
+    except Exception as exc:
+        logger.exception("get_metrics error")
+        raise HTTPException(status_code=500, detail=str(exc))

@@ -51,3 +51,25 @@ def test_recent_evals_returns_rows(client, supabase_mock):
     rows = r.json()["evaluations"]
     assert len(rows) == 1
     assert rows[0]["model_name"] == "bge"
+
+
+def test_get_metrics_returns_list(client, supabase_mock):
+    supabase_mock.table.return_value.select.return_value.execute.return_value.data = [
+        {
+            "day": "2026-05-29T00:00:00+00:00",
+            "query_type": "resume_to_jobs",
+            "model_name": "BAAI/bge-large-en-v1.5",
+            "reranked": True,
+            "total_queries": 12,
+            "avg_latency_ms": 340.5,
+            "thumbs_up": 8,
+            "thumbs_down": 2,
+            "clicks": 5,
+        }
+    ]
+    r = client.get("/api/eval/metrics")
+    assert r.status_code == 200
+    body = r.json()
+    assert "metrics" in body
+    assert len(body["metrics"]) == 1
+    assert body["metrics"][0]["total_queries"] == 12
