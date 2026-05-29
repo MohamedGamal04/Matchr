@@ -118,7 +118,7 @@ def rerank(
         return candidates
 
     cross = get_crossencoder()
-    pairs = [(query, c.get(text_key, "")[:512]) for c in candidates]
+    pairs = [(query, c.get(text_key, "")) for c in candidates]
     scores = cross.predict(pairs)
 
     for i, c in enumerate(candidates):
