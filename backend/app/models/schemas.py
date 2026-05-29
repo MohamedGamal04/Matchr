@@ -76,6 +76,26 @@ class FeedbackResponse(BaseModel):
     status: str
 
 
+# ── Explainability schemas ────────────────────────────────────────────────────
+
+class ExplainRequest(BaseModel):
+    query_text: str = Field(..., min_length=10)
+    result_id: str
+    result_type: str = Field(..., pattern="^(job|resume)$")
+
+
+class MatchedSpan(BaseModel):
+    query_sentence: str
+    doc_sentence: str
+    score: float
+
+
+class ExplainResponse(BaseModel):
+    matched_spans: list[MatchedSpan]
+    skill_analysis: dict           # {"matched": [...], "missing": [...]}
+    section_scores: dict[str, float]  # section_type → cosine similarity; {} for jobs
+
+
 # ── Ingest schemas ────────────────────────────────────────────────────────────
 
 class IngestResumeRequest(BaseModel):
