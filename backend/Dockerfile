@@ -31,6 +31,9 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies from the frozen lockfile (no network lookup)
 RUN uv sync --frozen --no-install-project
 
+# Download the en_core_web_sm model (spaCy already installed by uv sync above)
+RUN uv run python -m spacy download en_core_web_sm
+
 # Copy application code
 COPY ./app ./app
 
