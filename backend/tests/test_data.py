@@ -24,6 +24,17 @@ def test_ingest_resume_happy(client, supabase_mock):
     assert "Python Developer" in body["message"]
 
 
+def test_ingest_resume_embeds_sections(client, supabase_mock):
+    """User-submitted resumes must also populate resume_sections so they are
+    reachable via section-aware retrieval."""
+    r = client.post("/api/ingest/resume", json={
+        "category":  "Python Developer",
+        "full_text": LONG_TEXT,
+    })
+    assert r.status_code == 201
+    supabase_mock.table.assert_any_call("resume_sections")
+
+
 # ── /api/ingest/job ──────────────────────────────────────────────────────────
 
 def test_ingest_job_validation_too_short(client, supabase_mock):

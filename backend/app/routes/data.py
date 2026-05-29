@@ -29,6 +29,7 @@ from app.services.auth import require_api_key
 from app.services.embedder import encode_document
 from app.services.limiter import limiter
 from app.services.preprocessor import sanitize_preview
+from app.services.section_parser import parse_sections
 from app.services.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -69,12 +70,45 @@ def ingest_resume(request: Request, req: IngestResumeRequest) -> IngestResponse:
         logger.exception("Supabase insert failed for resume %s", source_id)
         raise HTTPException(status_code=500, detail=f"Database insert failed: {exc}")
 
-    inserted_id = result.data[0]["id"] if result.data else source_id
+    inserted_id = result.data[0]["id"] if result.data else None
+
+    # Embed sections so user-submitted resumes are also reachable via
+    # section-aware retrieval (`section_aware=true`). Best-effort: a section
+    # failure must never roll back the main resume insert above.
+    if inserted_id:
+        _embed_resume_sections(inserted_id, full_text)
+
     return IngestResponse(
-        id=str(inserted_id),
+        id=str(inserted_id or source_id),
         source_id=source_id,
         message=f"Resume added to {req.category.strip()} category",
     )
+
+
+def _embed_resume_sections(resume_id: str, full_text: str) -> None:
+    """Parse `full_text` into sections, embed each, upsert into resume_sections.
+
+    Mirrors scripts/migrate_resumes.py. Swallows errors so the caller's main
+    insert is never affected by a section-level failure.
+    """
+    supabase = get_supabase()
+    for section_type, content in parse_sections(full_text).items():
+        if not content.strip():
+            continue
+        try:
+            supabase.table("resume_sections").upsert(
+                {
+                    "resume_id":    resume_id,
+                    "section_type": section_type,
+                    "content":      content[:MAX_TEXT_CHARS],
+                    "embedding":    encode_document(settings.default_model, content),
+                },
+                on_conflict="resume_id,section_type",
+            ).execute()
+        except Exception:
+            logger.exception(
+                "Section embed failed for resume %s / %s", resume_id, section_type
+            )
 
 
 @router.post("/job", response_model=IngestResponse, status_code=201)
