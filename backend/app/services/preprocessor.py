@@ -1,42 +1,20 @@
 import re
 
 try:
-    from num2words import num2words
+    from num2words import num2words as _num2words  # kept for backwards compat, unused
     _HAS_NUM2WORDS = True
 except ImportError:
     _HAS_NUM2WORDS = False
 
 
-def _replace_num(match: re.Match) -> str:
-    """Convert a matched integer to its English word form."""
-    if not _HAS_NUM2WORDS:
-        return match.group()
-    try:
-        return num2words(int(match.group()))
-    except Exception:
-        return match.group()
-
-
 def preprocess_text(text: str) -> str:
     """
-    Clean and normalise text before embedding.
-
-    Steps:
-    1. Lower-case
-    2. Strip URLs and e-mail addresses (noise for semantic matching)
-    3. Collapse whitespace
-    4. Convert standalone integers to words — "5 years" → "five years"
-       improves cosine similarity across numeric variants.
+    Clean text before embedding. Preserves case and numerics — BGE was
+    trained on natural-cased text; lowercasing degrades cosine similarity.
     """
-    text = text.lower()
-    # Remove URLs
     text = re.sub(r"https?://\S+|www\.\S+", " ", text)
-    # Remove e-mail addresses
     text = re.sub(r"\S+@\S+", " ", text)
-    # Collapse whitespace
     text = re.sub(r"\s+", " ", text).strip()
-    # Numbers → words (only standalone integers, not decimals/years)
-    text = re.sub(r"\b\d{1,4}\b", _replace_num, text)
     return text
 
 
