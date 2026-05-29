@@ -1,3 +1,13 @@
+---
+title: Matchr
+emoji: 🎯
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Matchr Backend
 
 FastAPI app — semantic resume screening with bi-encoder retrieval and cross-encoder reranking.
