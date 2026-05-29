@@ -218,15 +218,21 @@ def match_job_to_resumes(request: Request, req: MatchRequest):
         embedding = encode_query(req.model_name, req.text)
 
         supabase = get_supabase()
-        result = supabase.rpc(
-            "match_resumes",
-            {
-                "query_embedding": embedding,
-                "match_count": 50,
-                "filter_category": None,
-            },
-        ).execute()
+        if req.section_aware:
+            rpc_name = "match_resumes_sectioned"
+            rpc_params = {"query_embedding": embedding, "match_count": 50}
+        else:
+            rpc_name = "match_resumes"
+            rpc_params = {"query_embedding": embedding, "match_count": 50, "filter_category": None}
+
+        result = supabase.rpc(rpc_name, rpc_params).execute()
         candidates: list[dict] = result.data or []
+
+        # Normalise resume_id → id for the sectioned RPC (which returns resume_id, not id)
+        if req.section_aware:
+            for c in candidates:
+                if "id" not in c and "resume_id" in c:
+                    c["id"] = c["resume_id"]
 
         if not candidates:
             return {
@@ -276,6 +282,7 @@ def match_job_to_resumes(request: Request, req: MatchRequest):
                     matched_skills=matched,
                     missing_skills=missing,
                     source=c.get("source") or "",
+                    best_section=c.get("best_section"),
                 )
             )
 

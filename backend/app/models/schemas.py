@@ -18,6 +18,7 @@ class MatchRequest(BaseModel):
             "None or empty = no filter."
         ),
     )
+    section_aware: bool = Field(False, description="Use section-level embeddings for retrieval (job→resumes only)")
 
 
 class JobResult(BaseModel):
@@ -46,6 +47,7 @@ class ResumeResult(BaseModel):
     matched_skills: list[str] = []
     missing_skills: list[str] = []
     source: str = ""
+    best_section: Optional[str] = None
 
 
 class OneToOneRequest(BaseModel):

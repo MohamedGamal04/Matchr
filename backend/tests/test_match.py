@@ -79,6 +79,35 @@ def test_job_resumes_validation_short_text(client):
     assert r.status_code == 422
 
 
+def test_job_resumes_section_aware_calls_sectioned_rpc(client, supabase_mock):
+    """When section_aware=True, the route calls match_resumes_sectioned RPC."""
+    # sectioned RPC returns resume_id (not id); route must normalise to "id" key
+    supabase_mock.rpc.return_value.execute.return_value.data = [{
+        "resume_id": "r1",
+        "category": "Python Developer",
+        "preview": "Python developer with FastAPI experience",
+        "similarity": 0.88,
+        "best_section": "experience",
+    }]
+    # After normalisation the route does .in_("id", ["r1"]) on the resumes table
+    supabase_mock.table.return_value.select.return_value.in_.return_value.execute.return_value.data = [{
+        "id": "r1",
+        "full_text": "Python developer with FastAPI Django PostgreSQL",
+        "source": "sid1877/Resume-dataset-2024",
+    }]
+
+    r = client.post("/api/match/job-resumes", json={
+        "text": "Looking for a Python developer with FastAPI experience",
+        "top_k": 3, "rerank": False, "section_aware": True,
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["results"]) == 1
+    rpc_name = supabase_mock.rpc.call_args[0][0]
+    assert rpc_name == "match_resumes_sectioned"
+    assert body["results"][0]["best_section"] == "experience"
+
+
 def test_job_resumes_happy_path(client, supabase_mock):
     supabase_mock.rpc.return_value.execute.return_value.data = [{
         "id": "r1", "category": "Python Developer",
